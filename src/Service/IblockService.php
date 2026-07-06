@@ -120,6 +120,11 @@ final class IblockService
                 'HTML' => 'HTML string (USER_TYPE HTML)',
                 'multiple' => 'JSON array of values; uses addTo on write',
             ],
+            'limitations' => [
+                'property_definition_crud' => false,
+                'property_enum_crud' => false,
+                'note' => 'Схема свойств только для чтения. Создание/изменение/удаление свойств инфоблока (CIBlockProperty) не поддерживается. Значения свойств на элементах — через iblock_element_add/update.',
+            ],
         ];
     }
 

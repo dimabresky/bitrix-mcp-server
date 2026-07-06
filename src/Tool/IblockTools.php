@@ -27,7 +27,7 @@ final class IblockTools extends AbstractToolHandler
         ]);
     }
 
-    #[McpTool(name: 'iblock_schema', description: 'Schema for iblock: fields, properties, enum values. Requires API_CODE on iblock.')]
+    #[McpTool(name: 'iblock_schema', description: 'Read-only iblock schema: fields, property definitions, enum values. No property add/update/delete (CIBlockProperty). Requires API_CODE.')]
     public function iblockSchema(int $iblock_id): array
     {
         return $this->run('iblock_schema', ['iblock_id' => $iblock_id], fn () => $this->service->getSchema($iblock_id));
@@ -97,7 +97,7 @@ final class IblockTools extends AbstractToolHandler
         ], fn () => $this->service->getElement($iblock_id, $element_id));
     }
 
-    #[McpTool(name: 'iblock_element_add', description: 'Create element. fields_json: NAME, CODE, ACTIVE... properties_json: {"AUTHOR":"text","SOURCE":1}')]
+    #[McpTool(name: 'iblock_element_add', description: 'Create element. fields_json: NAME, CODE, ACTIVE... properties_json: property VALUES on element (not property schema changes), e.g. {"AUTHOR":"text","SOURCE":1}')]
     public function iblockElementAdd(
         int $iblock_id,
         string $fields_json,
@@ -113,7 +113,7 @@ final class IblockTools extends AbstractToolHandler
         ));
     }
 
-    #[McpTool(name: 'iblock_element_update', description: 'Patch element fields/properties. Only passed keys are updated.')]
+    #[McpTool(name: 'iblock_element_update', description: 'Patch element fields and property VALUES (properties_json). Does not add/update/delete property definitions on iblock.')]
     public function iblockElementUpdate(
         int $iblock_id,
         int $element_id,
