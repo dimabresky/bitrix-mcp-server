@@ -2,10 +2,9 @@
 
 MCP server exposing Bitrix **infoblocks** and **highload blocks** to AI clients via SSH + STDIO.
 
-## Project location
+## Размещение
 
-- Development root: `D:\projects\bitrix-mcp-server`
-- Deploy on Bitrix server: e.g. `/var/www/site/local/mcp/`
+- На сервере Bitrix: например `/var/www/site/local/mcp/`
 
 ## API sources (mandatory)
 

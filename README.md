@@ -1,32 +1,31 @@
 # Bitrix MCP Server
 
-MCP server for **read/write** access to Bitrix **infoblocks** and **highload blocks**. Connects from Cursor on your PC to a remote Bitrix server via **SSH + STDIO**.
+MCP-сервер для **чтения и записи** данных в **инфоблоках** и **highload-блоках** Bitrix. Подключается из Cursor на локальной машине к удалённому серверу с Bitrix через **SSH + STDIO**.
 
-- Development: `D:\projects\bitrix-mcp-server`
-- Deploy on server: e.g. `/var/www/site/local/mcp/`
+Развёртывание на сервере: например `/var/www/site/local/mcp/`.
 
-API implementation follows [Bitrix iblock API docs](https://docs.1c-bitrix.ru/pages/modules/iblocks/api.html) (D7 ORM + classic layer where required). See [AGENTS.md](AGENTS.md).
+Реализация API следует [документации по инфоблокам](https://docs.1c-bitrix.ru/pages/modules/iblocks/api.html) (D7 ORM + классический API там, где это требуется). См. также [AGENTS.md](AGENTS.md).
 
-## Requirements
+## Требования
 
-- PHP >= 8.1 on the Bitrix server
-- Bitrix modules: `iblock`, `highloadblock`
-- Infoblocks in whitelist must have **API_CODE** («Символьный код API») set
-- SSH access from your machine to the server
+- PHP >= 8.1 на сервере с Bitrix
+- Модули Bitrix: `iblock`, `highloadblock`
+- У инфоблоков из whitelist должен быть задан **API_CODE** («Символьный код API»)
+- SSH-доступ с вашей машины на сервер
 
-## Install on server
+## Установка на сервере
 
 ```bash
 cd /var/www/site/local
-git clone <your-repo-url> mcp
+git clone https://github.com/dimabresky/bitrix-mcp-server.git mcp
 cd mcp
 composer install --no-dev
 cp config.sample.php config.php
-# Edit config.php: service_user_id, allowed_iblocks, allowed_hlblocks
+# Отредактируйте config.php: service_user_id, allowed_iblocks, allowed_hlblocks
 mkdir -p logs && chmod 755 logs
 ```
 
-Set a strong token on the server (e.g. in `~/.bashrc` or systemd unit):
+Задайте надёжный токен на сервере (например, в `~/.bashrc` или unit systemd):
 
 ```bash
 export MCP_AUTH_TOKEN="your-secret-token"
@@ -34,18 +33,18 @@ export MCP_AUTH_TOKEN="your-secret-token"
 
 ## config.php
 
-Copy from `config.sample.php`. Important keys:
+Скопируйте из `config.sample.php`. Основные параметры:
 
-| Key | Description |
-|-----|-------------|
-| `service_user_id` | Bitrix user for `$USER->Authorize()` — needs rights on whitelisted iblocks/HL |
-| `allowed_iblocks` | Array of iblock IDs |
-| `allowed_hlblocks` | Array of HL block IDs |
-| `auth_token` | Must match `MCP_AUTH_TOKEN` env var |
+| Ключ | Описание |
+|------|----------|
+| `service_user_id` | ID пользователя Bitrix для `$USER->Authorize()` — нужны права на iblock/HL из whitelist |
+| `allowed_iblocks` | Массив ID инфоблоков |
+| `allowed_hlblocks` | Массив ID highload-блоков |
+| `auth_token` | Должен совпадать с переменной окружения `MCP_AUTH_TOKEN` |
 
-## Cursor MCP config
+## Настройка MCP в Cursor
 
-Add to Cursor settings (`mcpServers`):
+Добавьте в настройки Cursor (`mcpServers`):
 
 ```json
 {
@@ -66,7 +65,7 @@ Add to Cursor settings (`mcpServers`):
 }
 ```
 
-On Windows, ensure `ssh` works from PowerShell. Optional `~/.ssh/config` host alias:
+На Windows убедитесь, что `ssh` работает из PowerShell. Опционально — алиас в `~/.ssh/config`:
 
 ```
 Host bitrix-staging
@@ -75,59 +74,59 @@ Host bitrix-staging
     IdentityFile ~/.ssh/id_ed25519
 ```
 
-Then use `"deploy@your-server"` → `"bitrix-staging"` in args.
+Тогда в `args` вместо `"deploy@your-server"` можно указать `"bitrix-staging"`.
 
-Keep MCP **`bitrix`** enabled in Cursor for documentation while developing this server.
+Для разработки и сверки API держите в Cursor включённым MCP **`bitrix`** (документация ядра).
 
-## Tools
+## Инструменты (tools)
 
-### Infoblocks
+### Инфоблоки
 
-| Tool | Description |
-|------|-------------|
-| `iblock_list` | List whitelisted iblocks |
-| `iblock_schema` | Properties, enums, input hints |
-| `iblock_sections_list` | Sections (`filter_json`) |
-| `iblock_elements_list` | Elements (`filter_json`, `select_json`) |
-| `iblock_element_get` | Full element + properties |
+| Tool | Описание |
+|------|----------|
+| `iblock_list` | Список инфоблоков из whitelist |
+| `iblock_schema` | Свойства, enum, подсказки по формату ввода |
+| `iblock_sections_list` | Разделы (`filter_json`) |
+| `iblock_elements_list` | Элементы (`filter_json`, `select_json`) |
+| `iblock_element_get` | Элемент со всеми свойствами |
 | `iblock_element_add` | `fields_json`, `properties_json` |
-| `iblock_element_update` | Patch fields/properties |
-| `iblock_element_delete` | Requires `confirm: true` |
+| `iblock_element_update` | Частичное обновление полей и свойств |
+| `iblock_element_delete` | Требует `confirm: true` |
 
-### Highload blocks
+### Highload-блоки
 
-| Tool | Description |
-|------|-------------|
-| `hlblock_list` | Whitelisted HL blocks |
-| `hlblock_schema` | ORM + UF fields |
-| `hlblock_records_list` | Records list |
-| `hlblock_record_get` | Single record |
-| `hlblock_record_add` | `fields_json` with `UF_*` |
-| `hlblock_record_update` | Patch record |
-| `hlblock_record_delete` | Requires `confirm: true` |
+| Tool | Описание |
+|------|----------|
+| `hlblock_list` | HL-блоки из whitelist |
+| `hlblock_schema` | Поля ORM и UF |
+| `hlblock_records_list` | Список записей |
+| `hlblock_record_get` | Одна запись |
+| `hlblock_record_add` | `fields_json` с ключами `UF_*` |
+| `hlblock_record_update` | Частичное обновление записи |
+| `hlblock_record_delete` | Требует `confirm: true` |
 
-## Property value formats (write)
+## Форматы значений свойств (запись)
 
-| Type | Format |
-|------|--------|
-| String `S` | `"VALUE"` |
-| Number `N` | `"123.45"` |
-| List `L` | enum **ID** (integer) |
-| Element link `E` | linked element ID |
-| Section link `G` | section ID |
-| Directory (HL) | `UF_XML_ID` string |
-| HTML (`USER_TYPE` HTML) | HTML string |
-| Multiple | JSON array `["a","b"]` |
+| Тип | Формат |
+|-----|--------|
+| Строка `S` | `"VALUE"` |
+| Число `N` | `"123.45"` |
+| Список `L` | **ID** значения enum (целое число) |
+| Привязка к элементу `E` | ID связанного элемента |
+| Привязка к разделу `G` | ID раздела |
+| Справочник (HL) | строка `UF_XML_ID` |
+| HTML (`USER_TYPE` HTML) | HTML-строка |
+| Множественное | JSON-массив `["a","b"]` |
 
-## Example calls
+## Примеры вызовов
 
-**List iblocks:**
+**Список инфоблоков:**
 
 ```json
 { "type": "catalog" }
 ```
 
-**Create element:**
+**Создание элемента:**
 
 ```json
 {
@@ -137,7 +136,7 @@ Keep MCP **`bitrix`** enabled in Cursor for documentation while developing this 
 }
 ```
 
-**HL record add:**
+**Добавление записи HL:**
 
 ```json
 {
@@ -146,33 +145,33 @@ Keep MCP **`bitrix`** enabled in Cursor for documentation while developing this 
 }
 ```
 
-## Verification
+## Проверка
 
-Local (no Bitrix required):
+Локально (Bitrix не нужен):
 
 ```bash
 php scripts/verify-structure.php
 ```
 
-On staging after deploy:
+На staging после деплоя:
 
-1. `ssh deploy@server "DOCUMENT_ROOT=/var/www/site MCP_AUTH_TOKEN=... php /var/www/site/local/mcp/server.php"` — should wait on stdin (no stdout garbage)
-2. In Cursor: run `iblock_list` and `hlblock_list`
-3. `iblock_schema` for a whitelisted iblock — check `API_CODE` present
-4. Write test: `iblock_element_add` → `iblock_element_get` → `iblock_element_update` → `iblock_element_delete` with `confirm: true`
-5. Check `logs/audit.log` on server
+1. `ssh deploy@server "DOCUMENT_ROOT=/var/www/site MCP_AUTH_TOKEN=... php /var/www/site/local/mcp/server.php"` — процесс должен ждать stdin (в stdout не должно быть лишнего вывода)
+2. В Cursor: вызовите `iblock_list` и `hlblock_list`
+3. `iblock_schema` для инфоблока из whitelist — проверьте наличие `API_CODE`
+4. Тест записи: `iblock_element_add` → `iblock_element_get` → `iblock_element_update` → `iblock_element_delete` с `confirm: true`
+5. Проверьте `logs/audit.log` на сервере
 
-## Security
+## Безопасность
 
-- Whitelist only; operations on other IDs are rejected
-- `MCP_AUTH_TOKEN` required on every tool call
-- Service Bitrix user — no `NOT_CHECK_PERMISSIONS`
-- Delete requires explicit `confirm: true`
-- Audit log for all tool invocations
+- Только сущности из whitelist; остальные ID отклоняются
+- На каждый вызов tool нужен `MCP_AUTH_TOKEN`
+- Сервисный пользователь Bitrix, без `NOT_CHECK_PERMISSIONS`
+- Удаление только с явным `confirm: true`
+- Аудит всех вызовов tools
 
-## Documentation
+## Документация
 
-- [Iblock API](https://docs.1c-bitrix.ru/pages/modules/iblocks/api.html)
-- [Iblock overview / API_CODE](https://docs.1c-bitrix.ru/pages/modules/iblocks/overview.html)
-- [Performance](https://docs.1c-bitrix.ru/pages/modules/iblocks/performance.html)
+- [API инфоблоков](https://docs.1c-bitrix.ru/pages/modules/iblocks/api.html)
+- [Обзор / API_CODE](https://docs.1c-bitrix.ru/pages/modules/iblocks/overview.html)
+- [Производительность](https://docs.1c-bitrix.ru/pages/modules/iblocks/performance.html)
 - [MCP PHP SDK](https://github.com/modelcontextprotocol/php-sdk)
