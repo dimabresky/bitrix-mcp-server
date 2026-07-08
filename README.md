@@ -1,6 +1,8 @@
 # Bitrix MCP Server
 
-MCP-сервер для **чтения и записи** данных в **инфоблоках** и **highload-блоках** Bitrix. Подключается из Cursor на локальной машине к удалённому серверу с Bitrix через **SSH + STDIO**.
+MCP-сервер для **чтения и записи** данных в **инфоблоках** и **highload-блоках** Bitrix. Работает по открытому протоколу [Model Context Protocol](https://modelcontextprotocol.io/) (STDIO + JSON-RPC) и **не привязан к конкретному редактору** — подходит любому MCP-клиенту.
+
+Типичная схема: MCP-клиент на локальной машине запускает `server.php` на удалённом сервере с Bitrix через **SSH + STDIO**. Ниже в качестве **примера** настройки показан Cursor; тот же конфиг (`command`, `args`, `env`) переносится в Claude Desktop, VS Code с MCP, Cursor SDK и другие совместимые клиенты.
 
 Развёртывание на сервере: например `/var/www/site/local/mcp/`.
 
@@ -42,9 +44,11 @@ export MCP_AUTH_TOKEN="your-secret-token"
 | `allowed_hlblocks` | Массив ID highload-блоков |
 | `auth_token` | Должен совпадать с переменной окружения `MCP_AUTH_TOKEN` |
 
-## Настройка MCP в Cursor
+## Подключение MCP-клиента (пример: Cursor)
 
-Добавьте в настройки Cursor (`mcpServers`):
+Любой MCP-клиент с поддержкой STDIO подключается одинаково: локально запускается `ssh … php …/server.php`, обмен идёт через stdin/stdout.
+
+**Пример для Cursor** — добавьте в настройки (`mcpServers`):
 
 ```json
 {
@@ -76,7 +80,9 @@ Host bitrix-staging
 
 Тогда в `args` вместо `"deploy@your-server"` можно указать `"bitrix-staging"`.
 
-Для разработки и сверки API держите в Cursor включённым MCP **`bitrix`** (документация ядра).
+**Другие клиенты:** скопируйте блок `bitrix-data` в конфиг вашего MCP-клиента (например, `claude_desktop_config.json` у Claude Desktop) — структура `command` / `args` / `env` та же.
+
+Для разработки и сверки API в Cursor (или другом клиенте) дополнительно можно держать включённым MCP **`bitrix`** — это отдельный сервер документации ядра, не путать с `bitrix-data`.
 
 ## Инструменты (tools)
 
@@ -180,7 +186,7 @@ php scripts/verify-structure.php
 На staging после деплоя:
 
 1. `ssh deploy@server "DOCUMENT_ROOT=/var/www/site MCP_AUTH_TOKEN=... php /var/www/site/local/mcp/server.php"` — процесс должен ждать stdin (в stdout не должно быть лишнего вывода)
-2. В Cursor: вызовите `iblock_list` и `hlblock_list`
+2. В MCP-клиенте (например, Cursor): вызовите `iblock_list` и `hlblock_list`
 3. `iblock_schema` для инфоблока из whitelist — проверьте наличие `API_CODE`
 4. Тест записи: `iblock_element_add` → `iblock_element_get` → `iblock_element_update` → `iblock_element_delete` с `confirm: true`
 5. Проверьте `logs/audit.log` на сервере
