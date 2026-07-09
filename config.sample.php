@@ -30,7 +30,4 @@ return [
     // MCP HTTP session storage (must be writable by PHP)
     'session_store_path' => __DIR__ . '/sessions',
     'session_ttl' => 3600,
-
-    // Hostnames permitted by DNS rebinding protection (your site domain(s))
-    'allowed_hosts' => ['staging.example.com', 'www.example.com'],
 ];

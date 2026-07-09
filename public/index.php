@@ -13,7 +13,6 @@ use BitrixMcp\Config\Config;
 use BitrixMcp\Server\McpServerFactory;
 use Laminas\HttpHandlerRunner\Emitter\SapiEmitter;
 use Mcp\Server\Transport\Http\Middleware\CorsMiddleware;
-use Mcp\Server\Transport\Http\Middleware\DnsRebindingProtectionMiddleware;
 use Mcp\Server\Transport\Http\Middleware\ProtocolVersionMiddleware;
 use Mcp\Server\Transport\StreamableHttpTransport;
 use Nyholm\Psr7\Factory\Psr17Factory;
@@ -43,14 +42,8 @@ try {
     );
     $request = $creator->fromGlobals();
 
-    $allowedHosts = array_values(array_unique(array_merge(
-        ['localhost', '127.0.0.1', '[::1]'],
-        $config->allowedHosts(),
-    )));
-
     $middleware = [
         new CorsMiddleware(),
-        new DnsRebindingProtectionMiddleware($allowedHosts),
         new ProtocolVersionMiddleware(),
     ];
 
