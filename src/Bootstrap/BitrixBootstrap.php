@@ -23,8 +23,14 @@ final class BitrixBootstrap
         if (!defined('BX_CRONTAB')) {
             define('BX_CRONTAB', true);
         }
+        if (!defined('BX_NO_ACCELERATOR_RESET')) {
+            define('BX_NO_ACCELERATOR_RESET', true);
+        }
 
-        $docRoot = $_SERVER['DOCUMENT_ROOT'] ?? getenv('DOCUMENT_ROOT') ?: '';
+        $docRoot = $_SERVER['DOCUMENT_ROOT'] ?? '';
+        if ($docRoot === '' || !is_file($docRoot . '/bitrix/modules/main/include/prolog_before.php')) {
+            $docRoot = getenv('DOCUMENT_ROOT') ?: '';
+        }
         if ($docRoot === '' || !is_file($docRoot . '/bitrix/modules/main/include/prolog_before.php')) {
             throw new RuntimeException(
                 'Set DOCUMENT_ROOT to the Bitrix site root (directory containing /bitrix).'

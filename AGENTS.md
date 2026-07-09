@@ -1,10 +1,11 @@
 # Agent instructions — bitrix-mcp-server
 
-MCP server exposing Bitrix **infoblocks** and **highload blocks** to AI clients via SSH + STDIO.
+MCP server exposing Bitrix **infoblocks** and **highload blocks** to AI clients via **Streamable HTTP**.
 
 ## Размещение
 
-- На сервере Bitrix: например `/var/www/site/local/mcp/`
+- На сервере Bitrix: `/var/www/site/local/mcp/`
+- HTTP entry point: `public/index.php` → `https://site.ru/local/mcp/public/`
 
 ## API sources (mandatory)
 
@@ -21,10 +22,12 @@ Do **not** copy patterns from customer projects (testmile, etc.). Use only:
 - **Property definition CRUD is out of scope v1:** no `CIBlockProperty::Add/Update/Delete`, no `CIBlockPropertyEnum` management, no `iblock_property_*` tools. Do not suggest these without a separate task. Property **values** on elements only via `iblock_element_add` / `iblock_element_update` (ORM `set` / `addTo`)
 - HL records: `HighloadBlockTable::compileEntity` + data class `getList` / `add` / `update` / `delete`
 - Iblocks without `API_CODE` must return a clear error, not silent legacy fallback
-- STDIO: never write to STDOUT except JSON-RPC (use STDERR for logs)
+- HTTP: never write to the response body except valid MCP JSON; PHP errors/warnings → `error_log`, not output
+- Auth: `Authorization: Bearer <auth_token>` from config.php
 - Write operations: whitelist + service user `Authorize()` + audit log
 
 ## Stack
 
 - PHP >= 8.1
-- [mcp/sdk](https://github.com/modelcontextprotocol/php-sdk) + `StdioTransport`
+- [mcp/sdk](https://github.com/modelcontextprotocol/php-sdk) + `StreamableHttpTransport`
+- nyholm/psr7, nyholm/psr7-server, laminas-httphandlerrunner

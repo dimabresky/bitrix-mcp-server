@@ -13,8 +13,8 @@ return [
     // Bitrix user ID for $USER->Authorize() — must have rights on whitelisted iblocks/HL
     'service_user_id' => 1,
 
-    // Must match MCP_AUTH_TOKEN in Cursor / server environment
-    'auth_token' => getenv('MCP_AUTH_TOKEN') ?: '',
+    // Bearer token for MCP clients (Authorization: Bearer <token>)
+    'auth_token' => 'change-me-long-random-string',
 
     // Allowed infoblock IDs (numeric). Each must have API_CODE set for ORM operations.
     'allowed_iblocks' => [],
@@ -26,4 +26,11 @@ return [
     'max_list_limit' => 50,
 
     'audit_log_path' => __DIR__ . '/logs/audit.log',
+
+    // MCP HTTP session storage (must be writable by PHP)
+    'session_store_path' => __DIR__ . '/sessions',
+    'session_ttl' => 3600,
+
+    // Hostnames permitted by DNS rebinding protection (your site domain(s))
+    'allowed_hosts' => ['staging.example.com', 'www.example.com'],
 ];

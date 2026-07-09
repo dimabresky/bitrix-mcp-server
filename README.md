@@ -1,19 +1,17 @@
 # Bitrix MCP Server
 
-MCP-сервер для **чтения и записи** данных в **инфоблоках** и **highload-блоках** Bitrix. Работает по открытому протоколу [Model Context Protocol](https://modelcontextprotocol.io/) (STDIO + JSON-RPC) и **не привязан к конкретному редактору** — подходит любому MCP-клиенту.
+MCP-сервер для **чтения и записи** данных в **инфоблоках** и **highload-блоках** Bitrix. Работает по протоколу [Model Context Protocol](https://modelcontextprotocol.io/) (**Streamable HTTP**) и **не привязан к конкретному редактору** — подходит любому MCP-клиенту с поддержкой URL.
 
-Типичная схема: MCP-клиент на локальной машине запускает `server.php` на удалённом сервере с Bitrix через **SSH + STDIO**. Ниже в качестве **примера** настройки показан Cursor; тот же конфиг (`command`, `args`, `env`) переносится в Claude Desktop, VS Code с MCP, Cursor SDK и другие совместимые клиенты.
-
-Развёртывание на сервере: например `/var/www/site/local/mcp/`.
+Endpoint размещается на том же сайте Bitrix, например: `https://site.ru/local/mcp/public/`.
 
 Реализация API следует [документации по инфоблокам](https://docs.1c-bitrix.ru/pages/modules/iblocks/api.html) (D7 ORM + классический API там, где это требуется). См. также [AGENTS.md](AGENTS.md).
 
 ## Требования
 
-- PHP >= 8.1 на сервере с Bitrix
+- PHP >= 8.1 на сервере с Bitrix (PHP-FPM или Apache mod_php)
 - Модули Bitrix: `iblock`, `highloadblock`
 - У инфоблоков из whitelist должен быть задан **API_CODE** («Символьный код API»)
-- SSH-доступ с вашей машины на сервер
+- HTTPS на production/staging (рекомендуется обязательно)
 
 ## Установка на сервере
 
@@ -23,14 +21,8 @@ git clone https://github.com/dimabresky/bitrix-mcp-server.git mcp
 cd mcp
 composer install --no-dev
 cp config.sample.php config.php
-# Отредактируйте config.php: service_user_id, allowed_iblocks, allowed_hlblocks
-mkdir -p logs && chmod 755 logs
-```
-
-Задайте надёжный токен на сервере (например, в `~/.bashrc` или unit systemd):
-
-```bash
-export MCP_AUTH_TOKEN="your-secret-token"
+# Отредактируйте config.php: auth_token, service_user_id, allowed_iblocks, allowed_hlblocks, allowed_hosts
+mkdir -p logs sessions && chmod 755 logs sessions
 ```
 
 ## config.php
@@ -42,11 +34,34 @@ export MCP_AUTH_TOKEN="your-secret-token"
 | `service_user_id` | ID пользователя Bitrix для `$USER->Authorize()` — нужны права на iblock/HL из whitelist |
 | `allowed_iblocks` | Массив ID инфоблоков |
 | `allowed_hlblocks` | Массив ID highload-блоков |
-| `auth_token` | Должен совпадать с переменной окружения `MCP_AUTH_TOKEN` |
+| `auth_token` | Секретный Bearer-токен для MCP-клиентов |
+| `session_store_path` | Каталог для MCP-сессий (writable) |
+| `session_ttl` | TTL сессий в секундах (по умолчанию 3600) |
+| `allowed_hosts` | Домены сайта для DNS rebinding protection |
+
+## nginx
+
+Добавьте location (внутри server-блока сайта Bitrix):
+
+```nginx
+location ^~ /local/mcp/public/ {
+    try_files $uri $uri/ /local/mcp/public/index.php?$query_string;
+}
+```
+
+Дальше — стандартный `fastcgi_pass` / PHP-FPM, как для остальных PHP-файлов Bitrix.
+
+Опционально ограничьте доступ по IP:
+
+```nginx
+location ^~ /local/mcp/public/ {
+    allow 10.0.0.0/8;
+    deny all;
+    try_files $uri $uri/ /local/mcp/public/index.php?$query_string;
+}
+```
 
 ## Подключение MCP-клиента (пример: Cursor)
-
-Любой MCP-клиент с поддержкой STDIO подключается одинаково: локально запускается `ssh … php …/server.php`, обмен идёт через stdin/stdout.
 
 **Пример для Cursor** — добавьте в настройки (`mcpServers`):
 
@@ -54,35 +69,22 @@ export MCP_AUTH_TOKEN="your-secret-token"
 {
   "mcpServers": {
     "bitrix-data": {
-      "command": "ssh",
-      "args": [
-        "deploy@your-server",
-        "php",
-        "/var/www/site/local/mcp/server.php"
-      ],
-      "env": {
-        "DOCUMENT_ROOT": "/var/www/site",
-        "MCP_AUTH_TOKEN": "your-secret-token"
+      "url": "https://staging.example.com/local/mcp/public/",
+      "headers": {
+        "Authorization": "Bearer your-secret-token"
       }
     }
   }
 }
 ```
 
-На Windows убедитесь, что `ssh` работает из PowerShell. Опционально — алиас в `~/.ssh/config`:
+Токен в `Authorization` должен совпадать с `auth_token` в `config.php`.
 
-```
-Host bitrix-staging
-    HostName staging.example.com
-    User deploy
-    IdentityFile ~/.ssh/id_ed25519
-```
+Альтернатива для отладки: заголовок `X-MCP-Token: your-secret-token`.
 
-Тогда в `args` вместо `"deploy@your-server"` можно указать `"bitrix-staging"`.
+**Другие клиенты:** скопируйте блок `bitrix-data` в конфиг вашего MCP-клиента — структура `url` / `headers` та же.
 
-**Другие клиенты:** скопируйте блок `bitrix-data` в конфиг вашего MCP-клиента (например, `claude_desktop_config.json` у Claude Desktop) — структура `command` / `args` / `env` та же.
-
-Для разработки и сверки API в Cursor (или другом клиенте) дополнительно можно держать включённым MCP **`bitrix`** — это отдельный сервер документации ядра, не путать с `bitrix-data`.
+Для разработки и сверки API в Cursor дополнительно можно держать включённым MCP **`bitrix`** — это отдельный сервер документации ядра, не путать с `bitrix-data`.
 
 ## Инструменты (tools)
 
@@ -185,19 +187,35 @@ php scripts/verify-structure.php
 
 На staging после деплоя:
 
-1. `ssh deploy@server "DOCUMENT_ROOT=/var/www/site MCP_AUTH_TOKEN=... php /var/www/site/local/mcp/server.php"` — процесс должен ждать stdin (в stdout не должно быть лишнего вывода)
-2. В MCP-клиенте (например, Cursor): вызовите `iblock_list` и `hlblock_list`
-3. `iblock_schema` для инфоблока из whitelist — проверьте наличие `API_CODE`
-4. Тест записи: `iblock_element_add` → `iblock_element_get` → `iblock_element_update` → `iblock_element_delete` с `confirm: true`
-5. Проверьте `logs/audit.log` на сервере
+1. Без токена — `401 Unauthorized`:
+
+```bash
+curl -s -o /dev/null -w "%{http_code}" https://staging.example.com/local/mcp/public/
+```
+
+2. С токеном — MCP initialize (пример):
+
+```bash
+curl -s -X POST https://staging.example.com/local/mcp/public/ \
+  -H "Authorization: Bearer your-secret-token" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"curl","version":"1.0"}}}'
+```
+
+3. В MCP-клиенте (Cursor): вызовите `iblock_list` и `hlblock_list`
+4. `iblock_schema` для инфоблока из whitelist — проверьте наличие `API_CODE`
+5. Тест записи: `iblock_element_add` → `iblock_element_get` → `iblock_element_update` → `iblock_element_delete` с `confirm: true`
+6. Проверьте `logs/audit.log` на сервере
 
 ## Безопасность
 
+- Только **HTTPS** на production; endpoint даёт доступ к записи в iblock/HL
+- Bearer-токен в `Authorization` (или `X-MCP-Token` для отладки)
 - Только сущности из whitelist; остальные ID отклоняются
-- На каждый вызов tool нужен `MCP_AUTH_TOKEN`
 - Сервисный пользователь Bitrix, без `NOT_CHECK_PERMISSIONS`
 - Удаление только с явным `confirm: true`
 - Аудит всех вызовов tools
+- `config.php` не коммитить; при необходимости — IP whitelist на nginx
 
 ## Документация
 

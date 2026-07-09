@@ -80,6 +80,35 @@ final class Config
         return (string) ($this->data['audit_log_path'] ?? '');
     }
 
+    public function sessionStorePath(): string
+    {
+        return (string) ($this->data['session_store_path'] ?? '');
+    }
+
+    public function sessionTtl(): int
+    {
+        return max(60, (int) ($this->data['session_ttl'] ?? 3600));
+    }
+
+    /** @return list<string> */
+    public function allowedHosts(): array
+    {
+        $hosts = $this->data['allowed_hosts'] ?? [];
+        if (!is_array($hosts)) {
+            return [];
+        }
+
+        $result = [];
+        foreach ($hosts as $host) {
+            $normalized = strtolower(trim((string) $host));
+            if ($normalized !== '') {
+                $result[] = $normalized;
+            }
+        }
+
+        return array_values(array_unique($result));
+    }
+
     public function resolveLimit(?int $requested): int
     {
         $max = $this->maxListLimit();
