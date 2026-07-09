@@ -21,7 +21,7 @@ git clone https://github.com/dimabresky/bitrix-mcp-server.git mcp
 cd mcp
 composer install --no-dev
 cp config.sample.php config.php
-# Отредактируйте config.php: auth_token, service_user_id, allowed_iblocks, allowed_hlblocks, allowed_hosts
+# Отредактируйте config.php: auth_token, service_user_id, allowed_iblocks, allowed_hlblocks
 mkdir -p logs sessions && chmod 755 logs sessions
 ```
 
@@ -37,7 +37,6 @@ mkdir -p logs sessions && chmod 755 logs sessions
 | `auth_token` | Секретный Bearer-токен для MCP-клиентов |
 | `session_store_path` | Каталог для MCP-сессий (writable) |
 | `session_ttl` | TTL сессий в секундах (по умолчанию 3600) |
-| `allowed_hosts` | Домены сайта для DNS rebinding protection |
 
 ## nginx
 

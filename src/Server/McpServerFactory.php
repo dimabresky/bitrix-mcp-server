@@ -39,24 +39,25 @@ final class McpServerFactory
         $iblockTools = new IblockTools($auth, $audit, $iblockService);
         $hlTools = new HighloadTools($auth, $audit, $hlService);
 
+        // mcp/sdk HandlerResolver accepts Closure or [ClassName::class, 'method'], not [$instance, 'method'].
         return Server::builder()
             ->setServerInfo('Bitrix IBlock MCP', '2.0.0')
             ->setSession(new FileSessionStore($sessionPath, $config->sessionTtl()))
-            ->addTool([$iblockTools, 'iblockList'], 'iblock_list')
-            ->addTool([$iblockTools, 'iblockSchema'], 'iblock_schema')
-            ->addTool([$iblockTools, 'iblockSectionsList'], 'iblock_sections_list')
-            ->addTool([$iblockTools, 'iblockElementsList'], 'iblock_elements_list')
-            ->addTool([$iblockTools, 'iblockElementGet'], 'iblock_element_get')
-            ->addTool([$iblockTools, 'iblockElementAdd'], 'iblock_element_add')
-            ->addTool([$iblockTools, 'iblockElementUpdate'], 'iblock_element_update')
-            ->addTool([$iblockTools, 'iblockElementDelete'], 'iblock_element_delete')
-            ->addTool([$hlTools, 'hlblockList'], 'hlblock_list')
-            ->addTool([$hlTools, 'hlblockSchema'], 'hlblock_schema')
-            ->addTool([$hlTools, 'hlblockRecordsList'], 'hlblock_records_list')
-            ->addTool([$hlTools, 'hlblockRecordGet'], 'hlblock_record_get')
-            ->addTool([$hlTools, 'hlblockRecordAdd'], 'hlblock_record_add')
-            ->addTool([$hlTools, 'hlblockRecordUpdate'], 'hlblock_record_update')
-            ->addTool([$hlTools, 'hlblockRecordDelete'], 'hlblock_record_delete')
+            ->addTool(\Closure::fromCallable([$iblockTools, 'iblockList']), 'iblock_list')
+            ->addTool(\Closure::fromCallable([$iblockTools, 'iblockSchema']), 'iblock_schema')
+            ->addTool(\Closure::fromCallable([$iblockTools, 'iblockSectionsList']), 'iblock_sections_list')
+            ->addTool(\Closure::fromCallable([$iblockTools, 'iblockElementsList']), 'iblock_elements_list')
+            ->addTool(\Closure::fromCallable([$iblockTools, 'iblockElementGet']), 'iblock_element_get')
+            ->addTool(\Closure::fromCallable([$iblockTools, 'iblockElementAdd']), 'iblock_element_add')
+            ->addTool(\Closure::fromCallable([$iblockTools, 'iblockElementUpdate']), 'iblock_element_update')
+            ->addTool(\Closure::fromCallable([$iblockTools, 'iblockElementDelete']), 'iblock_element_delete')
+            ->addTool(\Closure::fromCallable([$hlTools, 'hlblockList']), 'hlblock_list')
+            ->addTool(\Closure::fromCallable([$hlTools, 'hlblockSchema']), 'hlblock_schema')
+            ->addTool(\Closure::fromCallable([$hlTools, 'hlblockRecordsList']), 'hlblock_records_list')
+            ->addTool(\Closure::fromCallable([$hlTools, 'hlblockRecordGet']), 'hlblock_record_get')
+            ->addTool(\Closure::fromCallable([$hlTools, 'hlblockRecordAdd']), 'hlblock_record_add')
+            ->addTool(\Closure::fromCallable([$hlTools, 'hlblockRecordUpdate']), 'hlblock_record_update')
+            ->addTool(\Closure::fromCallable([$hlTools, 'hlblockRecordDelete']), 'hlblock_record_delete')
             ->build();
     }
 }
