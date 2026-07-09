@@ -10,10 +10,19 @@ use Bitrix\Iblock\PropertyTable;
 use BitrixMcp\Config\Config;
 use BitrixMcp\Security\WhitelistGuard;
 use CIBlockElement;
+use CIBlockSectionPropertyLink;
 use RuntimeException;
 
 final class IblockService
 {
+    /** @var list<string> */
+    private const BASE_ELEMENT_FIELDS = [
+        'ID', 'NAME', 'CODE', 'ACTIVE', 'IBLOCK_SECTION_ID',
+        'PREVIEW_TEXT', 'DETAIL_TEXT', 'SORT',
+    ];
+
+    public const PROPERTIES_MODE_ALL = 'all';
+    public const PROPERTIES_MODE_SMART_FILTER = 'smart_filter';
     public function __construct(
         private readonly Config $config,
         private readonly WhitelistGuard $whitelist,
@@ -210,26 +219,32 @@ final class IblockService
     /**
      * @return array<string, mixed>
      */
-    public function getElement(int $iblockId, int $elementId): array
+    public function getSmartFilterSchema(int $iblockId, int $sectionId): array
     {
         $this->whitelist->assertIblockAllowed($iblockId);
+
+        return [
+            'iblock_id' => $iblockId,
+            'section_id' => $sectionId,
+            'items' => $this->getSmartFilterPropertyDefinitions($iblockId, $sectionId),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function getElement(
+        int $iblockId,
+        int $elementId,
+        string $propertiesMode = self::PROPERTIES_MODE_SMART_FILTER,
+        ?int $sectionIdOverride = null,
+    ): array {
+        $propertiesMode = $this->normalizePropertiesMode($propertiesMode);
+        $this->whitelist->assertIblockAllowed($iblockId);
         $elementClass = $this->resolver->elementDataClass($iblockId);
-        $schema = $this->getSchema($iblockId);
-
-        $propertyCodes = [];
-        foreach ($schema['properties'] as $prop) {
-            if ($prop['CODE'] !== '') {
-                $propertyCodes[] = $prop['CODE'];
-            }
-        }
-
-        $select = array_merge(
-            ['ID', 'NAME', 'CODE', 'ACTIVE', 'IBLOCK_SECTION_ID', 'PREVIEW_TEXT', 'DETAIL_TEXT', 'SORT'],
-            $propertyCodes
-        );
 
         $element = $elementClass::query()
-            ->setSelect($select)
+            ->setSelect(self::BASE_ELEMENT_FIELDS)
             ->where('ID', $elementId)
             ->setLimit(1)
             ->fetchObject();
@@ -238,30 +253,35 @@ final class IblockService
             throw new RuntimeException(sprintf('Element %d not found in iblock %d.', $elementId, $iblockId));
         }
 
-        $data = [
-            'ID' => $element->getId(),
-            'NAME' => $element->getName(),
-            'CODE' => $element->getCode(),
-            'ACTIVE' => $element->getActive() ? 'Y' : 'N',
-            'IBLOCK_SECTION_ID' => $element->getIblockSectionId(),
-            'PREVIEW_TEXT' => method_exists($element, 'getPreviewText') ? $element->getPreviewText() : null,
-            'DETAIL_TEXT' => method_exists($element, 'getDetailText') ? $element->getDetailText() : null,
-            'SORT' => method_exists($element, 'getSort') ? $element->getSort() : null,
-            'PROPERTIES' => [],
-        ];
+        $sectionId = $sectionIdOverride ?? (int) ($element->getIblockSectionId() ?? 0);
+        $propertyDefinitions = $propertiesMode === self::PROPERTIES_MODE_ALL
+            ? $this->loadAllPropertyDefinitions($iblockId)
+            : $this->getSmartFilterPropertyDefinitions($iblockId, $sectionId);
 
-        $propMap = [];
-        foreach ($schema['properties'] as $prop) {
-            $propMap[$prop['CODE']] = $prop;
+        $propertyCodes = [];
+        foreach ($propertyDefinitions as $prop) {
+            if (($prop['CODE'] ?? '') !== '') {
+                $propertyCodes[] = (string) $prop['CODE'];
+            }
         }
 
-        foreach ($propertyCodes as $code) {
-            $raw = method_exists($element, 'get') ? $element->get($code) : null;
-            $data['PROPERTIES'][$code] = $this->propertyNormalizer->normalizeForOutput(
-                $propMap[$code] ?? ['PROPERTY_TYPE' => 'S', 'MULTIPLE' => 'N', 'USER_TYPE' => ''],
-                $raw
-            );
+        if ($propertyCodes !== []) {
+            $elementWithProperties = $elementClass::query()
+                ->setSelect(array_merge(self::BASE_ELEMENT_FIELDS, $propertyCodes))
+                ->where('ID', $elementId)
+                ->setLimit(1)
+                ->fetchObject();
+
+            if ($elementWithProperties) {
+                $element = $elementWithProperties;
+            }
         }
+
+        $data = $this->buildElementData($element);
+        $data['properties_mode'] = $propertiesMode;
+        $data['smart_filter_section_id'] = $sectionId;
+        $data['property_codes'] = $propertyCodes;
+        $data['PROPERTIES'] = $this->normalizeElementProperties($element, $propertyDefinitions, $propertyCodes);
 
         return $data;
     }
@@ -285,7 +305,7 @@ final class IblockService
             throw new RuntimeException($this->formatErrors($result));
         }
 
-        return $this->getElement($iblockId, (int) $element->getId());
+        return $this->getElement($iblockId, (int) $element->getId(), self::PROPERTIES_MODE_SMART_FILTER);
     }
 
     /**
@@ -319,7 +339,7 @@ final class IblockService
             throw new RuntimeException($this->formatErrors($result));
         }
 
-        return $this->getElement($iblockId, $elementId);
+        return $this->getElement($iblockId, $elementId, self::PROPERTIES_MODE_SMART_FILTER);
     }
 
     public function deleteElement(int $iblockId, int $elementId): array
@@ -345,6 +365,190 @@ final class IblockService
         CIBlockElement::UpdateSearch($id, true);
 
         return ['deleted' => true, 'ID' => $id, 'iblock_id' => $iblockId];
+    }
+
+    /**
+     * Properties enabled in smart filter for the given section (CIBlockSectionPropertyLink).
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function getSmartFilterPropertyDefinitions(int $iblockId, int $sectionId): array
+    {
+        $links = CIBlockSectionPropertyLink::GetArray($iblockId, $sectionId);
+        if (!is_array($links) || $links === []) {
+            $links = CIBlockSectionPropertyLink::GetArray($iblockId, 0);
+        }
+
+        if (!is_array($links) || $links === []) {
+            return [];
+        }
+
+        $propertyIds = [];
+        $linkMeta = [];
+        foreach ($links as $propertyId => $link) {
+            if (!is_array($link)) {
+                continue;
+            }
+            if (($link['SMART_FILTER'] ?? '') !== 'Y') {
+                continue;
+            }
+            if (($link['ACTIVE'] ?? 'Y') === 'N') {
+                continue;
+            }
+
+            $id = (int) $propertyId;
+            if ($id <= 0) {
+                continue;
+            }
+
+            $propertyIds[] = $id;
+            $linkMeta[$id] = $link;
+        }
+
+        if ($propertyIds === []) {
+            return [];
+        }
+
+        return $this->loadPropertyDefinitionsByIds($iblockId, $propertyIds, $linkMeta);
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function loadAllPropertyDefinitions(int $iblockId): array
+    {
+        $properties = [];
+        $propRes = PropertyTable::getList([
+            'filter' => ['=IBLOCK_ID' => $iblockId, '!CODE' => false],
+            'select' => [
+                'ID', 'CODE', 'NAME', 'PROPERTY_TYPE', 'MULTIPLE', 'IS_REQUIRED',
+                'USER_TYPE', 'LINK_IBLOCK_ID', 'SORT',
+            ],
+            'order' => ['SORT' => 'ASC', 'NAME' => 'ASC'],
+        ]);
+
+        while ($prop = $propRes->fetch()) {
+            $properties[] = $this->mapPropertyDefinition($prop);
+        }
+
+        return $properties;
+    }
+
+    /**
+     * @param list<int> $propertyIds
+     * @param array<int, array<string, mixed>> $linkMeta
+     * @return list<array<string, mixed>>
+     */
+    private function loadPropertyDefinitionsByIds(int $iblockId, array $propertyIds, array $linkMeta = []): array
+    {
+        $properties = [];
+        $propRes = PropertyTable::getList([
+            'filter' => [
+                '=IBLOCK_ID' => $iblockId,
+                '@ID' => array_values(array_unique($propertyIds)),
+                '!CODE' => false,
+            ],
+            'select' => [
+                'ID', 'CODE', 'NAME', 'PROPERTY_TYPE', 'MULTIPLE', 'IS_REQUIRED',
+                'USER_TYPE', 'LINK_IBLOCK_ID', 'SORT',
+            ],
+            'order' => ['SORT' => 'ASC', 'NAME' => 'ASC'],
+        ]);
+
+        while ($prop = $propRes->fetch()) {
+            $id = (int) $prop['ID'];
+            $link = $linkMeta[$id] ?? [];
+            $entry = $this->mapPropertyDefinition($prop);
+            if ($link !== []) {
+                $entry['SMART_FILTER'] = 'Y';
+                $entry['DISPLAY_TYPE'] = (string) ($link['DISPLAY_TYPE'] ?? '');
+                $entry['DISPLAY_EXPANDED'] = (string) ($link['DISPLAY_EXPANDED'] ?? '');
+            }
+            $properties[] = $entry;
+        }
+
+        return $properties;
+    }
+
+    /**
+     * @param array<string, mixed> $prop
+     * @return array<string, mixed>
+     */
+    private function mapPropertyDefinition(array $prop): array
+    {
+        $code = (string) $prop['CODE'];
+        $entry = [
+            'ID' => (int) $prop['ID'],
+            'CODE' => $code,
+            'NAME' => (string) $prop['NAME'],
+            'PROPERTY_TYPE' => (string) $prop['PROPERTY_TYPE'],
+            'MULTIPLE' => (string) $prop['MULTIPLE'],
+            'IS_REQUIRED' => (string) $prop['IS_REQUIRED'],
+            'USER_TYPE' => (string) ($prop['USER_TYPE'] ?? ''),
+            'LINK_IBLOCK_ID' => (int) ($prop['LINK_IBLOCK_ID'] ?? 0),
+        ];
+
+        if ($prop['PROPERTY_TYPE'] === 'L') {
+            $entry['ENUM'] = $this->loadEnum((int) $prop['ID']);
+        }
+
+        return $entry;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildElementData(object $element): array
+    {
+        return [
+            'ID' => $element->getId(),
+            'NAME' => $element->getName(),
+            'CODE' => $element->getCode(),
+            'ACTIVE' => $element->getActive() ? 'Y' : 'N',
+            'IBLOCK_SECTION_ID' => $element->getIblockSectionId(),
+            'PREVIEW_TEXT' => method_exists($element, 'getPreviewText') ? $element->getPreviewText() : null,
+            'DETAIL_TEXT' => method_exists($element, 'getDetailText') ? $element->getDetailText() : null,
+            'SORT' => method_exists($element, 'getSort') ? $element->getSort() : null,
+        ];
+    }
+
+    /**
+     * @param list<array<string, mixed>> $propertyDefinitions
+     * @param list<string> $propertyCodes
+     * @return array<string, mixed>
+     */
+    private function normalizeElementProperties(object $element, array $propertyDefinitions, array $propertyCodes): array
+    {
+        $propMap = [];
+        foreach ($propertyDefinitions as $prop) {
+            $propMap[$prop['CODE']] = $prop;
+        }
+
+        $properties = [];
+        foreach ($propertyCodes as $code) {
+            try {
+                $raw = method_exists($element, 'get') ? $element->get($code) : null;
+                $properties[$code] = $this->propertyNormalizer->normalizeForOutput(
+                    $propMap[$code] ?? ['PROPERTY_TYPE' => 'S', 'MULTIPLE' => 'N', 'USER_TYPE' => ''],
+                    $raw
+                );
+            } catch (\Throwable $e) {
+                $properties[$code] = [
+                    '_error' => $e->getMessage(),
+                ];
+            }
+        }
+
+        return $properties;
+    }
+
+    private function normalizePropertiesMode(string $mode): string
+    {
+        if (!in_array($mode, [self::PROPERTIES_MODE_ALL, self::PROPERTIES_MODE_SMART_FILTER], true)) {
+            throw new RuntimeException('properties_mode must be "all" or "smart_filter".');
+        }
+
+        return $mode;
     }
 
     /**

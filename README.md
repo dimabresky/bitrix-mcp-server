@@ -95,7 +95,8 @@ location ^~ /local/mcp/public/ {
 | `iblock_schema` | Свойства, enum, подсказки по формату ввода |
 | `iblock_sections_list` | Разделы (`filter_json`) |
 | `iblock_elements_list` | Элементы (`filter_json`, `select_json`) |
-| `iblock_element_get` | Элемент со всеми свойствами |
+| `iblock_element_get` | Элемент по ID; `properties_mode`: `smart_filter` (по умолчанию) или `all`; опционально `section_id` |
+| `iblock_smart_filter_schema` | Свойства с `SMART_FILTER=Y` для раздела (как в `catalog.smart.filter`) |
 | `iblock_element_add` | `fields_json`, `properties_json` |
 | `iblock_element_update` | Частичное обновление полей и свойств |
 | `iblock_element_delete` | Требует `confirm: true` |
@@ -118,7 +119,7 @@ location ^~ /local/mcp/public/ {
 
 | Уровень | Что это | Статус в v1 |
 |---------|---------|-------------|
-| **Значения свойств на элементах** | `properties_json` в `iblock_element_add` / `iblock_element_update`, блок `PROPERTIES` в `iblock_element_get` | Поддерживается |
+| **Значения свойств на элементах** | `properties_json` в `iblock_element_add` / `iblock_element_update`, блок `PROPERTIES` в `iblock_element_get` | Поддерживается (`smart_filter` по умолчанию для каталогов) |
 | **Определения свойств инфоблока** | Создание/изменение/удаление свойств (`CIBlockProperty`), enum (`CIBlockPropertyEnum`) | **Не поддерживается** |
 
 ### Что можно
@@ -156,6 +157,38 @@ location ^~ /local/mcp/public/ {
 ```json
 { "type": "catalog" }
 ```
+
+**Получение элемента каталога (свойства умного фильтра, по умолчанию):**
+
+```json
+{
+  "iblock_id": 16,
+  "element_id": 2449677
+}
+```
+
+Режим `smart_filter` берёт свойства из `CIBlockSectionPropertyLink` с `SMART_FILTER=Y` для раздела элемента (`IBLOCK_SECTION_ID`). Ответ включает `properties_mode`, `smart_filter_section_id`, `property_codes`, `PROPERTIES`.
+
+**Все свойства инфоблока (только для небольших iblock):**
+
+```json
+{
+  "iblock_id": 16,
+  "element_id": 2449677,
+  "properties_mode": "all"
+}
+```
+
+**Схема умного фильтра для раздела (без элемента):**
+
+```json
+{
+  "iblock_id": 16,
+  "section_id": 6294
+}
+```
+
+Примечание: используется штатный Bitrix `CIBlockSectionPropertyLink`. Сайтовые доработки фильтра (например, дополнительная фильтрация facet ID) в MCP не реплицируются.
 
 **Создание элемента:**
 

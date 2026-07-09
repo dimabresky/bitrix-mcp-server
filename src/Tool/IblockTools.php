@@ -88,13 +88,34 @@ final class IblockTools extends AbstractToolHandler
         ]);
     }
 
-    #[McpTool(name: 'iblock_element_get', description: 'Get one element with all properties by ID.')]
-    public function iblockElementGet(int $iblock_id, int $element_id): array
-    {
+    #[McpTool(
+        name: 'iblock_element_get',
+        description: 'Get one element by ID. properties_mode: smart_filter (default, CIBlockSectionPropertyLink SMART_FILTER=Y for element section) or all (every iblock property). Optional section_id overrides element section for smart_filter.',
+    )]
+    public function iblockElementGet(
+        int $iblock_id,
+        int $element_id,
+        string $properties_mode = IblockService::PROPERTIES_MODE_SMART_FILTER,
+        ?int $section_id = null,
+    ): array {
         return $this->run('iblock_element_get', [
             'iblock_id' => $iblock_id,
             'element_id' => $element_id,
-        ], fn () => $this->service->getElement($iblock_id, $element_id));
+            'properties_mode' => $properties_mode,
+            'section_id' => $section_id,
+        ], fn () => $this->service->getElement($iblock_id, $element_id, $properties_mode, $section_id));
+    }
+
+    #[McpTool(
+        name: 'iblock_smart_filter_schema',
+        description: 'List property definitions with SMART_FILTER=Y for iblock section (same source as catalog.smart.filter).',
+    )]
+    public function iblockSmartFilterSchema(int $iblock_id, int $section_id): array
+    {
+        return $this->run('iblock_smart_filter_schema', [
+            'iblock_id' => $iblock_id,
+            'section_id' => $section_id,
+        ], fn () => $this->service->getSmartFilterSchema($iblock_id, $section_id));
     }
 
     #[McpTool(name: 'iblock_element_add', description: 'Create element. fields_json: NAME, CODE, ACTIVE... properties_json: property VALUES on element (not property schema changes), e.g. {"AUTHOR":"text","SOURCE":1}')]
