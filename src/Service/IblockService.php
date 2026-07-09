@@ -266,14 +266,18 @@ final class IblockService
         }
 
         if ($propertyCodes !== []) {
-            $elementWithProperties = $elementClass::query()
-                ->setSelect(array_merge(self::BASE_ELEMENT_FIELDS, $propertyCodes))
-                ->where('ID', $elementId)
-                ->setLimit(1)
-                ->fetchObject();
+            try {
+                $elementWithProperties = $elementClass::query()
+                    ->setSelect(array_merge(self::BASE_ELEMENT_FIELDS, $propertyCodes))
+                    ->where('ID', $elementId)
+                    ->setLimit(1)
+                    ->fetchObject();
 
-            if ($elementWithProperties) {
-                $element = $elementWithProperties;
+                if ($elementWithProperties) {
+                    $element = $elementWithProperties;
+                }
+            } catch (\Throwable $e) {
+                error_log('[bitrix-mcp-server] element property select failed: ' . $e->getMessage());
             }
         }
 
@@ -419,7 +423,7 @@ final class IblockService
     {
         $properties = [];
         $propRes = PropertyTable::getList([
-            'filter' => ['=IBLOCK_ID' => $iblockId, '!CODE' => false],
+            'filter' => ['=IBLOCK_ID' => $iblockId],
             'select' => [
                 'ID', 'CODE', 'NAME', 'PROPERTY_TYPE', 'MULTIPLE', 'IS_REQUIRED',
                 'USER_TYPE', 'LINK_IBLOCK_ID', 'SORT',
@@ -428,7 +432,10 @@ final class IblockService
         ]);
 
         while ($prop = $propRes->fetch()) {
-            $properties[] = $this->mapPropertyDefinition($prop);
+            if ((string) ($prop['CODE'] ?? '') === '') {
+                continue;
+            }
+            $properties[] = $this->mapPropertyDefinition($prop, false);
         }
 
         return $properties;
@@ -446,7 +453,6 @@ final class IblockService
             'filter' => [
                 '=IBLOCK_ID' => $iblockId,
                 '@ID' => array_values(array_unique($propertyIds)),
-                '!CODE' => false,
             ],
             'select' => [
                 'ID', 'CODE', 'NAME', 'PROPERTY_TYPE', 'MULTIPLE', 'IS_REQUIRED',
@@ -456,9 +462,12 @@ final class IblockService
         ]);
 
         while ($prop = $propRes->fetch()) {
+            if ((string) ($prop['CODE'] ?? '') === '') {
+                continue;
+            }
             $id = (int) $prop['ID'];
             $link = $linkMeta[$id] ?? [];
-            $entry = $this->mapPropertyDefinition($prop);
+            $entry = $this->mapPropertyDefinition($prop, false);
             if ($link !== []) {
                 $entry['SMART_FILTER'] = 'Y';
                 $entry['DISPLAY_TYPE'] = (string) ($link['DISPLAY_TYPE'] ?? '');
@@ -474,7 +483,7 @@ final class IblockService
      * @param array<string, mixed> $prop
      * @return array<string, mixed>
      */
-    private function mapPropertyDefinition(array $prop): array
+    private function mapPropertyDefinition(array $prop, bool $includeEnum = false): array
     {
         $code = (string) $prop['CODE'];
         $entry = [
@@ -488,7 +497,7 @@ final class IblockService
             'LINK_IBLOCK_ID' => (int) ($prop['LINK_IBLOCK_ID'] ?? 0),
         ];
 
-        if ($prop['PROPERTY_TYPE'] === 'L') {
+        if ($includeEnum && $prop['PROPERTY_TYPE'] === 'L') {
             $entry['ENUM'] = $this->loadEnum((int) $prop['ID']);
         }
 
