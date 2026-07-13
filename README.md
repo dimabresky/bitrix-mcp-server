@@ -1,29 +1,62 @@
 # Bitrix MCP Server
 
-MCP-сервер для **чтения и записи** данных в **инфоблоках** и **highload-блоках** Bitrix. Работает по протоколу [Model Context Protocol](https://modelcontextprotocol.io/) (**Streamable HTTP**) и **не привязан к конкретному редактору** — подходит любому MCP-клиенту с поддержкой URL.
+MCP-сервер для **чтения и записи** данных в **инфоблоках** и **highload-блоках** Bitrix.
 
-Endpoint размещается на том же сайте Bitrix, например: `https://site.ru/local/mcp/public/`.
+Работает **только по HTTP** — протокол [Model Context Protocol](https://modelcontextprotocol.io/) (**Streamable HTTP**). Точка входа — обычный PHP-скрипт на том же сайте Bitrix (`public/index.php`). Клиент подключается по **URL** и Bearer-токену; **не нужны** `command` / `args`, stdio и SSH-туннель к `server.php`.
+
+Пример endpoint: `https://site.ru/local/bitrix-mcp-server/public/`
 
 Реализация API следует [документации по инфоблокам](https://docs.1c-bitrix.ru/pages/modules/iblocks/api.html) (D7 ORM + классический API там, где это требуется). См. также [AGENTS.md](AGENTS.md).
 
+## Как это работает
+
+```
+MCP-клиент (Cursor и др.)
+    │  HTTPS POST/GET, JSON-RPC
+    │  Authorization: Bearer <auth_token>
+    ▼
+public/index.php
+    ├─ проверка Bearer-токена → 401 без токена
+    ├─ BitrixBootstrap: prolog_before, модули iblock/highloadblock, $USER->Authorize()
+    ├─ StreamableHttpTransport (mcp/sdk): сессии в каталоге sessions/
+    └─ tools → IblockService / HighloadService → Bitrix ORM
+         └─ audit.log
+```
+
+1. **HTTP-запрос** попадает в `public/index.php` через веб-сервер сайта (Apache, nginx, IIS — как для любого PHP в Bitrix).
+2. **Авторизация MCP** — заголовок `Authorization: Bearer …` (или `X-MCP-Token` для отладки). Токен сверяется с `auth_token` в `config.php`.
+3. **Bitrix** поднимается через `prolog_before.php`; все операции выполняются от имени `service_user_id`.
+4. **MCP-сессии** (initialize, tools/list, tools/call) хранятся в файловом хранилище `session_store_path` — это часть Streamable HTTP, не отдельный процесс.
+5. **Whitelist** — tools работают только с ID из `allowed_iblocks` / `allowed_hlblocks`.
+6. **Аудит** — каждый вызов tool пишется в `audit_log_path`.
+
+Legacy-режим через `server.php` и stdio **удалён**. Если файл `server.php` есть в каталоге — его нужно убрать.
+
 ## Требования
 
-- PHP >= 8.1 на сервере с Bitrix (PHP-FPM или Apache mod_php)
+- PHP >= 8.1 на сервере Bitrix (PHP-FPM, mod_php и т.п.)
 - Модули Bitrix: `iblock`, `highloadblock`
-- У инфоблоков из whitelist должен быть задан **API_CODE** («Символьный код API»)
-- HTTPS на production/staging (рекомендуется обязательно)
+- У инфоблоков из whitelist задан **API_CODE** («Символьный код API»)
+- HTTPS на production/staging
+- Каталоги `logs/` и `sessions/` доступны на запись для PHP
 
-## Установка на сервере
+## Установка
+
+Каталог размещается в `local/` сайта Bitrix (имя папки произвольное, URL зависит от пути):
 
 ```bash
 cd /var/www/site/local
-git clone https://github.com/dimabresky/bitrix-mcp-server.git mcp
-cd mcp
+git clone https://github.com/dimabresky/bitrix-mcp-server.git bitrix-mcp-server
+cd bitrix-mcp-server
 composer install --no-dev
 cp config.sample.php config.php
-# Отредактируйте config.php: auth_token, service_user_id, allowed_iblocks, allowed_hlblocks
+# Отредактируйте config.php
 mkdir -p logs sessions && chmod 755 logs sessions
 ```
+
+Endpoint будет доступен по адресу вида:
+
+`https://<домен>/local/bitrix-mcp-server/public/`
 
 ## config.php
 
@@ -31,22 +64,31 @@ mkdir -p logs sessions && chmod 755 logs sessions
 
 | Ключ | Описание |
 |------|----------|
-| `service_user_id` | ID пользователя Bitrix для `$USER->Authorize()` — нужны права на iblock/HL из whitelist |
+| `site_id` | Идентификатор сайта (LID), по умолчанию `s1` |
+| `service_user_id` | ID пользователя Bitrix для `$USER->Authorize()` — права на iblock/HL из whitelist |
+| `auth_token` | Секретный Bearer-токен для MCP-клиентов |
 | `allowed_iblocks` | Массив ID инфоблоков |
 | `allowed_hlblocks` | Массив ID highload-блоков |
-| `auth_token` | Секретный Bearer-токен для MCP-клиентов |
-| `session_store_path` | Каталог для MCP-сессий (writable) |
+| `max_list_limit` | Лимит записей в list-tools (фактический максимум — **100**) |
+| `audit_log_path` | Путь к файлу аудита (например `logs/audit.log`) |
+| `session_store_path` | Каталог MCP HTTP-сессий (writable) |
 | `session_ttl` | TTL сессий в секундах (по умолчанию 3600) |
 
-## Подключение MCP-клиента (пример: Cursor)
+`config.php` не коммитить.
 
-**Пример для Cursor** — добавьте в настройки (`mcpServers`):
+## Подключение MCP-клиента
+
+Клиент указывает **URL endpoint** и заголовок с токеном. Формат `command` + `args` (stdio, SSH, локальный PHP-процесс) **не используется**.
+
+### Пример: Cursor
+
+В настройках MCP (`mcpServers`):
 
 ```json
 {
   "mcpServers": {
     "bitrix-data": {
-      "url": "https://staging.example.com/local/mcp/public/",
+      "url": "https://staging.example.com/local/bitrix-mcp-server/public/",
       "headers": {
         "Authorization": "Bearer your-secret-token"
       }
@@ -57,11 +99,11 @@ mkdir -p logs sessions && chmod 755 logs sessions
 
 Токен в `Authorization` должен совпадать с `auth_token` в `config.php`.
 
-Альтернатива для отладки: заголовок `X-MCP-Token: your-secret-token`.
+Для отладки можно передать `X-MCP-Token: your-secret-token` вместо Bearer.
 
-**Другие клиенты:** скопируйте блок `bitrix-data` в конфиг вашего MCP-клиента — структура `url` / `headers` та же.
+**Другие клиенты** с поддержкой remote MCP (Streamable HTTP): та же пара `url` + `headers`.
 
-Для разработки и сверки API в Cursor дополнительно можно держать включённым MCP **`bitrix`** — это отдельный сервер документации ядра, не путать с `bitrix-data`.
+Для разработки в Cursor можно дополнительно держать MCP **`bitrix`** — это отдельный сервер **документации ядра**, не путать с `bitrix-data` (данные сайта).
 
 ## Инструменты (tools)
 
@@ -74,7 +116,7 @@ mkdir -p logs sessions && chmod 755 logs sessions
 | `iblock_sections_list` | Разделы (`filter_json`) |
 | `iblock_elements_list` | Элементы (`filter_json`, `select_json`) |
 | `iblock_element_get` | Элемент по ID; `properties_mode`: `smart_filter` (по умолчанию) или `all`; опционально `section_id` |
-| `iblock_smart_filter_schema` | Свойства с `SMART_FILTER=Y` для раздела (как в `catalog.smart.filter`) |
+| `iblock_smart_filter_schema` | Свойства с `SMART_FILTER=Y` для раздела |
 | `iblock_element_add` | `fields_json`, `properties_json` |
 | `iblock_element_update` | Частичное обновление полей и свойств |
 | `iblock_element_delete` | Требует `confirm: true` |
@@ -93,27 +135,16 @@ mkdir -p logs sessions && chmod 755 logs sessions
 
 ## Ограничения: свойства инфоблока
 
-Два разных уровня — не путать:
+| Уровень | Что это | Статус |
+|---------|---------|--------|
+| **Значения свойств на элементах** | `properties_json` в add/update, `PROPERTIES` в get | Поддерживается |
+| **Определения свойств** | `CIBlockProperty`, `CIBlockPropertyEnum` | **Не поддерживается** |
 
-| Уровень | Что это | Статус в v1 |
-|---------|---------|-------------|
-| **Значения свойств на элементах** | `properties_json` в `iblock_element_add` / `iblock_element_update`, блок `PROPERTIES` в `iblock_element_get` | Поддерживается (`smart_filter` по умолчанию для каталогов) |
-| **Определения свойств инфоблока** | Создание/изменение/удаление свойств (`CIBlockProperty`), enum (`CIBlockPropertyEnum`) | **Не поддерживается** |
+Что **можно**: `iblock_schema` (чтение), запись значений через `iblock_element_*`.
 
-### Что можно
+Чего **нет**: `iblock_property_*`, управление enum, файловые свойства `F` на элементах.
 
-- `iblock_schema` — **только чтение** списка свойств, типов и enum
-- Запись **значений** свойств при создании/обновлении элементов (`iblock_element_*`)
-
-### Чего нет в v1
-
-- `iblock_property_add`, `iblock_property_update`, `iblock_property_delete`
-- Добавление/изменение/удаление вариантов списка (`CIBlockPropertyEnum::Add` и т.д.)
-- Файловые свойства `F` на элементах
-
-Ответ `iblock_schema` содержит блок `limitations` с тем же пояснением для агента.
-
-Для HL-блоков: запись значений `UF_*` в записях (`hlblock_record_*`) поддерживается; отдельные tools для изменения **структуры** HL-блока (добавление UF-полей) не предусмотрены.
+Для HL: запись `UF_*` в записях поддерживается; изменение структуры HL-блока — нет.
 
 ## Форматы значений свойств (запись)
 
@@ -121,14 +152,14 @@ mkdir -p logs sessions && chmod 755 logs sessions
 |-----|--------|
 | Строка `S` | `"VALUE"` |
 | Число `N` | `"123.45"` |
-| Список `L` | **ID** значения enum (целое число) |
-| Привязка к элементу `E` | ID связанного элемента |
+| Список `L` | ID значения enum (целое число) |
+| Привязка к элементу `E` | ID элемента |
 | Привязка к разделу `G` | ID раздела |
 | Справочник (HL) | строка `UF_XML_ID` |
-| HTML (`USER_TYPE` HTML) | HTML-строка |
+| HTML | HTML-строка |
 | Множественное | JSON-массив `["a","b"]` |
 
-## Примеры вызовов
+## Примеры аргументов tools
 
 **Список инфоблоков:**
 
@@ -136,7 +167,7 @@ mkdir -p logs sessions && chmod 755 logs sessions
 { "type": "catalog" }
 ```
 
-**Получение элемента каталога (свойства умного фильтра, по умолчанию):**
+**Элемент каталога (свойства умного фильтра, по умолчанию):**
 
 ```json
 {
@@ -145,9 +176,7 @@ mkdir -p logs sessions && chmod 755 logs sessions
 }
 ```
 
-Режим `smart_filter` берёт свойства из `CIBlockSectionPropertyLink` с `SMART_FILTER=Y` для раздела элемента (`IBLOCK_SECTION_ID`). Ответ включает `properties_mode`, `smart_filter_section_id`, `property_codes`, `PROPERTIES`.
-
-**Все свойства инфоблока (только для небольших iblock):**
+**Все свойства элемента:**
 
 ```json
 {
@@ -157,7 +186,7 @@ mkdir -p logs sessions && chmod 755 logs sessions
 }
 ```
 
-**Схема умного фильтра для раздела (без элемента):**
+**Схема умного фильтра для раздела:**
 
 ```json
 {
@@ -165,8 +194,6 @@ mkdir -p logs sessions && chmod 755 logs sessions
   "section_id": 6294
 }
 ```
-
-Примечание: используется штатный Bitrix `CIBlockSectionPropertyLink`. Сайтовые доработки фильтра (например, дополнительная фильтрация facet ID) в MCP не реплицируются.
 
 **Создание элемента:**
 
@@ -178,7 +205,7 @@ mkdir -p logs sessions && chmod 755 logs sessions
 }
 ```
 
-**Добавление записи HL:**
+**Запись HL:**
 
 ```json
 {
@@ -189,47 +216,46 @@ mkdir -p logs sessions && chmod 755 logs sessions
 
 ## Проверка
 
-Локально (Bitrix не нужен):
+**Локально** (Bitrix не нужен — структура и autoload):
 
 ```bash
 php scripts/verify-structure.php
 ```
 
-На staging после деплоя:
+**На стенде** после деплоя:
 
-1. Без токена — `401 Unauthorized`:
+1. Без токена — `401`:
 
 ```bash
-curl -s -o /dev/null -w "%{http_code}" https://staging.example.com/local/mcp/public/
+curl -s -o /dev/null -w "%{http_code}" https://staging.example.com/local/bitrix-mcp-server/public/
 ```
 
-2. С токеном — MCP initialize (пример):
+2. С токеном — MCP `initialize`:
 
 ```bash
-curl -s -X POST https://staging.example.com/local/mcp/public/ \
+curl -s -X POST https://staging.example.com/local/bitrix-mcp-server/public/ \
   -H "Authorization: Bearer your-secret-token" \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"curl","version":"1.0"}}}'
 ```
 
-3. В MCP-клиенте (Cursor): вызовите `iblock_list` и `hlblock_list`
-4. `iblock_schema` для инфоблока из whitelist — проверьте наличие `API_CODE`
-5. Тест записи: `iblock_element_add` → `iblock_element_get` → `iblock_element_update` → `iblock_element_delete` с `confirm: true`
-6. Проверьте `logs/audit.log` на сервере
+3. В MCP-клиенте: `iblock_list`, `hlblock_list`
+4. `iblock_schema` — проверьте `API_CODE` у инфоблока
+5. Цепочка записи: add → get → update → delete с `confirm: true`
+6. Запись в `logs/audit.log`
 
 ## Безопасность
 
-- Только **HTTPS** на production; endpoint даёт доступ к записи в iblock/HL
-- Bearer-токен в `Authorization` (или `X-MCP-Token` для отладки)
-- Только сущности из whitelist; остальные ID отклоняются
-- Сервисный пользователь Bitrix, без `NOT_CHECK_PERMISSIONS`
-- Удаление только с явным `confirm: true`
+- **HTTPS** на production; endpoint даёт доступ к записи в iblock/HL
+- Bearer-токен в каждом HTTP-запросе
+- Только сущности из whitelist
+- Сервисный пользователь Bitrix через `$USER->Authorize()`, без `NOT_CHECK_PERMISSIONS`
+- Удаление только с `confirm: true`
 - Аудит всех вызовов tools
-- `config.php` не коммитить; при необходимости — IP whitelist на nginx
+- `config.php` с секретами не коммитить
 
 ## Документация
 
 - [API инфоблоков](https://docs.1c-bitrix.ru/pages/modules/iblocks/api.html)
 - [Обзор / API_CODE](https://docs.1c-bitrix.ru/pages/modules/iblocks/overview.html)
-- [Производительность](https://docs.1c-bitrix.ru/pages/modules/iblocks/performance.html)
-- [MCP PHP SDK](https://github.com/modelcontextprotocol/php-sdk)
+- [MCP PHP SDK (Streamable HTTP)](https://github.com/modelcontextprotocol/php-sdk)
