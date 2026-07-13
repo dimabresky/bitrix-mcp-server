@@ -38,28 +38,6 @@ mkdir -p logs sessions && chmod 755 logs sessions
 | `session_store_path` | Каталог для MCP-сессий (writable) |
 | `session_ttl` | TTL сессий в секундах (по умолчанию 3600) |
 
-## nginx
-
-Добавьте location (внутри server-блока сайта Bitrix):
-
-```nginx
-location ^~ /local/mcp/public/ {
-    try_files $uri $uri/ /local/mcp/public/index.php?$query_string;
-}
-```
-
-Дальше — стандартный `fastcgi_pass` / PHP-FPM, как для остальных PHP-файлов Bitrix.
-
-Опционально ограничьте доступ по IP:
-
-```nginx
-location ^~ /local/mcp/public/ {
-    allow 10.0.0.0/8;
-    deny all;
-    try_files $uri $uri/ /local/mcp/public/index.php?$query_string;
-}
-```
-
 ## Подключение MCP-клиента (пример: Cursor)
 
 **Пример для Cursor** — добавьте в настройки (`mcpServers`):
