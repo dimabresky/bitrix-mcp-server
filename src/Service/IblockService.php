@@ -127,7 +127,8 @@ final class IblockService
                 'G' => 'linked section ID',
                 'directory' => 'UF_XML_ID from HL directory',
                 'HTML' => 'HTML string (USER_TYPE HTML)',
-                'multiple' => 'JSON array of values; uses addTo on write',
+                'Polygon' => 'JSON string of rings [[[lat,lon],...]]; arrays are json_encoded on write',
+                'multiple' => 'JSON array of values',
             ],
             'limitations' => [
                 'property_definition_crud' => false,
@@ -265,27 +266,15 @@ final class IblockService
             }
         }
 
-        if ($propertyCodes !== []) {
-            try {
-                $elementWithProperties = $elementClass::query()
-                    ->setSelect(array_merge(self::BASE_ELEMENT_FIELDS, $propertyCodes))
-                    ->where('ID', $elementId)
-                    ->setLimit(1)
-                    ->fetchObject();
-
-                if ($elementWithProperties) {
-                    $element = $elementWithProperties;
-                }
-            } catch (\Throwable $e) {
-                error_log('[bitrix-mcp-server] element property select failed: ' . $e->getMessage());
-            }
-        }
-
         $data = $this->buildElementData($element);
         $data['properties_mode'] = $propertiesMode;
         $data['smart_filter_section_id'] = $sectionId;
         $data['property_codes'] = $propertyCodes;
-        $data['PROPERTIES'] = $this->normalizeElementProperties($element, $propertyDefinitions, $propertyCodes);
+        $data['PROPERTIES'] = $this->loadClassicElementProperties(
+            $elementId,
+            $propertyDefinitions,
+            $propertyCodes
+        );
 
         return $data;
     }
@@ -298,18 +287,27 @@ final class IblockService
     public function addElement(int $iblockId, array $fields, array $properties = []): array
     {
         $this->whitelist->assertIblockAllowed($iblockId);
-        $elementClass = $this->resolver->elementDataClass($iblockId);
+        $this->resolver->resolveIblock($iblockId);
 
-        $element = $elementClass::createObject();
-        $this->applyElementFields($element, $fields);
-        $this->propertyNormalizer->applyToElement($element, $properties);
+        $classicFields = $this->mapFieldsForClassicApi($fields);
+        if (!isset($classicFields['NAME']) || trim((string) $classicFields['NAME']) === '') {
+            throw new RuntimeException('Field NAME is required when creating an element.');
+        }
+        $classicFields['IBLOCK_ID'] = $iblockId;
 
-        $result = $element->save();
-        if (!$result->isSuccess()) {
-            throw new RuntimeException($this->formatErrors($result));
+        $iblockElement = new CIBlockElement();
+        $elementId = $iblockElement->Add($classicFields);
+        if (!$elementId) {
+            $error = trim((string) $iblockElement->LAST_ERROR);
+            throw new RuntimeException($error !== '' ? $error : 'CIBlockElement::Add failed.');
         }
 
-        return $this->getElement($iblockId, (int) $element->getId(), self::PROPERTIES_MODE_SMART_FILTER);
+        $elementId = (int) $elementId;
+        if ($properties !== []) {
+            $this->setElementProperties($iblockId, $elementId, $properties);
+        }
+
+        return $this->getElement($iblockId, $elementId, self::PROPERTIES_MODE_ALL);
     }
 
     /**
@@ -324,26 +322,22 @@ final class IblockService
         array $properties = [],
     ): array {
         $this->whitelist->assertIblockAllowed($iblockId);
-        $elementClass = $this->resolver->elementDataClass($iblockId);
+        $this->assertElementInIblock($iblockId, $elementId);
 
-        $element = $elementClass::query()
-            ->where('ID', $elementId)
-            ->setLimit(1)
-            ->fetchObject();
-
-        if (!$element) {
-            throw new RuntimeException(sprintf('Element %d not found in iblock %d.', $elementId, $iblockId));
+        $classicFields = $this->mapFieldsForClassicApi($fields);
+        if ($classicFields !== []) {
+            $iblockElement = new CIBlockElement();
+            if (!$iblockElement->Update($elementId, $classicFields)) {
+                $error = trim((string) $iblockElement->LAST_ERROR);
+                throw new RuntimeException($error !== '' ? $error : 'CIBlockElement::Update failed.');
+            }
         }
 
-        $this->applyElementFields($element, $fields, true);
-        $this->propertyNormalizer->applyToElement($element, $properties);
-
-        $result = $element->save();
-        if (!$result->isSuccess()) {
-            throw new RuntimeException($this->formatErrors($result));
+        if ($properties !== []) {
+            $this->setElementProperties($iblockId, $elementId, $properties);
         }
 
-        return $this->getElement($iblockId, $elementId, self::PROPERTIES_MODE_SMART_FILTER);
+        return $this->getElement($iblockId, $elementId, self::PROPERTIES_MODE_ALL);
     }
 
     public function deleteElement(int $iblockId, int $elementId): array
@@ -526,29 +520,91 @@ final class IblockService
      * @param list<string> $propertyCodes
      * @return array<string, mixed>
      */
-    private function normalizeElementProperties(object $element, array $propertyDefinitions, array $propertyCodes): array
-    {
+    private function loadClassicElementProperties(
+        int $elementId,
+        array $propertyDefinitions,
+        array $propertyCodes,
+    ): array {
+        if ($propertyCodes === []) {
+            return [];
+        }
+
+        $res = CIBlockElement::GetList(
+            [],
+            ['ID' => $elementId],
+            false,
+            ['nTopCount' => 1],
+            ['ID', 'IBLOCK_ID']
+        );
+        $ob = $res->GetNextElement();
+        if (!$ob) {
+            throw new RuntimeException(sprintf('Element %d not found.', $elementId));
+        }
+
+        /** @var array<string, array<string, mixed>> $classic */
+        $classic = $ob->GetProperties();
         $propMap = [];
         foreach ($propertyDefinitions as $prop) {
-            $propMap[$prop['CODE']] = $prop;
+            $propMap[(string) $prop['CODE']] = $prop;
         }
 
         $properties = [];
         foreach ($propertyCodes as $code) {
-            try {
-                $raw = method_exists($element, 'get') ? $element->get($code) : null;
-                $properties[$code] = $this->propertyNormalizer->normalizeForOutput(
-                    $propMap[$code] ?? ['PROPERTY_TYPE' => 'S', 'MULTIPLE' => 'N', 'USER_TYPE' => ''],
-                    $raw
-                );
-            } catch (\Throwable $e) {
-                $properties[$code] = [
-                    '_error' => $e->getMessage(),
-                ];
+            $row = $classic[$code] ?? null;
+            if (!is_array($row)) {
+                $properties[$code] = null;
+                continue;
             }
+            $properties[$code] = $this->propertyNormalizer->extractClassicValue(
+                $propMap[$code] ?? ['PROPERTY_TYPE' => 'S', 'MULTIPLE' => 'N', 'USER_TYPE' => ''],
+                $row
+            );
         }
 
         return $properties;
+    }
+
+    /**
+     * @param array<string, mixed> $properties
+     */
+    private function setElementProperties(int $iblockId, int $elementId, array $properties): void
+    {
+        $definitions = $this->loadAllPropertyDefinitions($iblockId);
+        $byCode = [];
+        foreach ($definitions as $def) {
+            $byCode[strtoupper((string) $def['CODE'])] = $def;
+        }
+
+        $values = [];
+        foreach ($properties as $code => $value) {
+            if ($value === null) {
+                continue;
+            }
+            $code = strtoupper((string) $code);
+            $schema = $byCode[$code] ?? ['PROPERTY_TYPE' => 'S', 'MULTIPLE' => 'N', 'USER_TYPE' => ''];
+            $values[$code] = $this->propertyNormalizer->prepareForClassicWrite($schema, $value);
+        }
+
+        if ($values === []) {
+            return;
+        }
+
+        CIBlockElement::SetPropertyValuesEx($elementId, $iblockId, $values);
+    }
+
+    private function assertElementInIblock(int $iblockId, int $elementId): void
+    {
+        $row = CIBlockElement::GetList(
+            [],
+            ['ID' => $elementId, 'IBLOCK_ID' => $iblockId],
+            false,
+            ['nTopCount' => 1],
+            ['ID']
+        )->Fetch();
+
+        if (!$row) {
+            throw new RuntimeException(sprintf('Element %d not found in iblock %d.', $elementId, $iblockId));
+        }
     }
 
     private function normalizePropertiesMode(string $mode): string
@@ -598,6 +654,29 @@ final class IblockService
             }
             $query->where($field, $value);
         }
+    }
+
+    /**
+     * Scalar iblock fields for CIBlockElement::Add/Update (Y/N for ACTIVE).
+     *
+     * @param array<string, mixed> $fields
+     * @return array<string, mixed>
+     */
+    private function mapFieldsForClassicApi(array $fields): array
+    {
+        $out = [];
+        foreach (['NAME', 'CODE', 'PREVIEW_TEXT', 'DETAIL_TEXT', 'SORT', 'IBLOCK_SECTION_ID'] as $key) {
+            if (array_key_exists($key, $fields)) {
+                $out[$key] = $fields[$key];
+            }
+        }
+
+        if (array_key_exists('ACTIVE', $fields)) {
+            $value = $fields['ACTIVE'];
+            $out['ACTIVE'] = ($value === 'Y' || $value === true || $value === 1 || $value === '1') ? 'Y' : 'N';
+        }
+
+        return $out;
     }
 
     /**
