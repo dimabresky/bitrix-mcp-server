@@ -42,6 +42,8 @@ $classes = [
     \BitrixMcp\Auth\TokenAuthenticator::class,
     \BitrixMcp\Service\IblockService::class,
     \BitrixMcp\Service\HighloadService::class,
+    \BitrixMcp\Service\FileSource::class,
+    \BitrixMcp\Service\BitrixFileArray::class,
     \BitrixMcp\Tool\IblockTools::class,
     \BitrixMcp\Tool\HighloadTools::class,
 ];

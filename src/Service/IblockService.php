@@ -127,13 +127,15 @@ final class IblockService
                 'G' => 'linked section ID',
                 'directory' => 'UF_XML_ID from HL directory',
                 'HTML' => 'HTML string (USER_TYPE HTML)',
+                'F' => 'file source: {"path":"/from/site/root"}, {"url":"https://..."}, {"name":"a.jpg","content_base64":"..."}, or {"del":true}',
                 'Polygon' => 'JSON string of rings [[[lat,lon],...]]; arrays are json_encoded on write',
                 'multiple' => 'JSON array of values',
+                'PREVIEW_PICTURE' => 'same file source as property type F',
             ],
             'limitations' => [
                 'property_definition_crud' => false,
                 'property_enum_crud' => false,
-                'note' => 'Схема свойств только для чтения. Создание/изменение/удаление свойств инфоблока (CIBlockProperty) не поддерживается. Значения свойств на элементах — через iblock_element_add/update.',
+                'note' => 'Схема свойств только для чтения. Создание/изменение/удаление свойств инфоблока (CIBlockProperty) не поддерживается. Значения свойств на элементах — через iblock_element_add/update. Файлы передаются объектом path, url или name+content_base64.',
             ],
         ];
     }
@@ -289,25 +291,30 @@ final class IblockService
         $this->whitelist->assertIblockAllowed($iblockId);
         $this->resolver->resolveIblock($iblockId);
 
-        $classicFields = $this->mapFieldsForClassicApi($fields);
-        if (!isset($classicFields['NAME']) || trim((string) $classicFields['NAME']) === '') {
-            throw new RuntimeException('Field NAME is required when creating an element.');
-        }
-        $classicFields['IBLOCK_ID'] = $iblockId;
+        $files = $this->fileArrays();
+        try {
+            $classicFields = $this->mapFieldsForClassicApi($fields, $files);
+            if (!isset($classicFields['NAME']) || trim((string) $classicFields['NAME']) === '') {
+                throw new RuntimeException('Field NAME is required when creating an element.');
+            }
+            $classicFields['IBLOCK_ID'] = $iblockId;
 
-        $iblockElement = new CIBlockElement();
-        $elementId = $iblockElement->Add($classicFields);
-        if (!$elementId) {
-            $error = trim((string) $iblockElement->LAST_ERROR);
-            throw new RuntimeException($error !== '' ? $error : 'CIBlockElement::Add failed.');
-        }
+            $iblockElement = new CIBlockElement();
+            $elementId = $iblockElement->Add($classicFields);
+            if (!$elementId) {
+                $error = trim((string) $iblockElement->LAST_ERROR);
+                throw new RuntimeException($error !== '' ? $error : 'CIBlockElement::Add failed.');
+            }
 
-        $elementId = (int) $elementId;
-        if ($properties !== []) {
-            $this->setElementProperties($iblockId, $elementId, $properties);
-        }
+            $elementId = (int) $elementId;
+            if ($properties !== []) {
+                $this->setElementProperties($iblockId, $elementId, $properties, $files);
+            }
 
-        return $this->getElement($iblockId, $elementId, self::PROPERTIES_MODE_ALL);
+            return $this->getElement($iblockId, $elementId, self::PROPERTIES_MODE_ALL);
+        } finally {
+            $files->cleanup();
+        }
     }
 
     /**
@@ -324,20 +331,25 @@ final class IblockService
         $this->whitelist->assertIblockAllowed($iblockId);
         $this->assertElementInIblock($iblockId, $elementId);
 
-        $classicFields = $this->mapFieldsForClassicApi($fields);
-        if ($classicFields !== []) {
-            $iblockElement = new CIBlockElement();
-            if (!$iblockElement->Update($elementId, $classicFields)) {
-                $error = trim((string) $iblockElement->LAST_ERROR);
-                throw new RuntimeException($error !== '' ? $error : 'CIBlockElement::Update failed.');
+        $files = $this->fileArrays();
+        try {
+            $classicFields = $this->mapFieldsForClassicApi($fields, $files);
+            if ($classicFields !== []) {
+                $iblockElement = new CIBlockElement();
+                if (!$iblockElement->Update($elementId, $classicFields)) {
+                    $error = trim((string) $iblockElement->LAST_ERROR);
+                    throw new RuntimeException($error !== '' ? $error : 'CIBlockElement::Update failed.');
+                }
             }
-        }
 
-        if ($properties !== []) {
-            $this->setElementProperties($iblockId, $elementId, $properties);
-        }
+            if ($properties !== []) {
+                $this->setElementProperties($iblockId, $elementId, $properties, $files);
+            }
 
-        return $this->getElement($iblockId, $elementId, self::PROPERTIES_MODE_ALL);
+            return $this->getElement($iblockId, $elementId, self::PROPERTIES_MODE_ALL);
+        } finally {
+            $files->cleanup();
+        }
     }
 
     public function deleteElement(int $iblockId, int $elementId): array
@@ -567,8 +579,12 @@ final class IblockService
     /**
      * @param array<string, mixed> $properties
      */
-    private function setElementProperties(int $iblockId, int $elementId, array $properties): void
-    {
+    private function setElementProperties(
+        int $iblockId,
+        int $elementId,
+        array $properties,
+        BitrixFileArray $files,
+    ): void {
         $definitions = $this->loadAllPropertyDefinitions($iblockId);
         $byCode = [];
         foreach ($definitions as $def) {
@@ -582,6 +598,10 @@ final class IblockService
             }
             $code = strtoupper((string) $code);
             $schema = $byCode[$code] ?? ['PROPERTY_TYPE' => 'S', 'MULTIPLE' => 'N', 'USER_TYPE' => ''];
+            if ((string) ($schema['PROPERTY_TYPE'] ?? '') === 'F') {
+                $values[$code] = $files->makeProperty($value, ($schema['MULTIPLE'] ?? 'N') === 'Y', 'iblock');
+                continue;
+            }
             $values[$code] = $this->propertyNormalizer->prepareForClassicWrite($schema, $value);
         }
 
@@ -662,12 +682,18 @@ final class IblockService
      * @param array<string, mixed> $fields
      * @return array<string, mixed>
      */
-    private function mapFieldsForClassicApi(array $fields): array
+    private function mapFieldsForClassicApi(array $fields, BitrixFileArray $files): array
     {
         $out = [];
         foreach (['NAME', 'CODE', 'PREVIEW_TEXT', 'DETAIL_TEXT', 'SORT', 'IBLOCK_SECTION_ID'] as $key) {
             if (array_key_exists($key, $fields)) {
                 $out[$key] = $fields[$key];
+            }
+        }
+
+        foreach (['PREVIEW_PICTURE', 'DETAIL_PICTURE'] as $picture) {
+            if (array_key_exists($picture, $fields)) {
+                $out[$picture] = $files->make($fields[$picture]);
             }
         }
 
@@ -677,6 +703,11 @@ final class IblockService
         }
 
         return $out;
+    }
+
+    private function fileArrays(): BitrixFileArray
+    {
+        return new BitrixFileArray(new FileSource((string) ($_SERVER['DOCUMENT_ROOT'] ?? '')));
     }
 
     /**
