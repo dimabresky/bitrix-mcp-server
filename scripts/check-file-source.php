@@ -9,7 +9,9 @@ declare(strict_types=1);
 
 $root = dirname(__DIR__);
 require $root . '/src/Service/FileSource.php';
+require $root . '/src/Service/BitrixFileArray.php';
 
+use BitrixMcp\Service\BitrixFileArray;
 use BitrixMcp\Service\FileSource;
 
 $errors = [];
@@ -61,6 +63,10 @@ expect(FileSource::isBlockedIp('192.168.0.8'), 'rfc1918 blocked', $errors);
 expect(FileSource::isBlockedIp('169.254.1.1'), 'link-local blocked', $errors);
 expect(FileSource::isBlockedIp('100.64.0.1'), 'cgnat blocked', $errors);
 expect(FileSource::isBlockedIp('::1'), 'ipv6 loopback blocked', $errors);
+expect(FileSource::isBlockedIp('::ffff:127.0.0.1'), 'mapped loopback blocked', $errors);
+expect(FileSource::isBlockedIp('::ffff:169.254.169.254'), 'mapped link-local blocked', $errors);
+expect(FileSource::isBlockedIp('::ffff:10.0.0.1'), 'mapped private blocked', $errors);
+expect(!FileSource::isBlockedIp('::ffff:8.8.8.8'), 'mapped public allowed', $errors);
 expect(!FileSource::isBlockedIp('8.8.8.8'), 'public ipv4 allowed', $errors);
 expect(!FileSource::isBlockedIp('2001:4860:4860::8888'), 'public ipv6 allowed', $errors);
 
@@ -68,6 +74,7 @@ expectThrow(static fn () => $source->materialize(['url' => 'http://127.0.0.1/roo
 expectThrow(static fn () => $source->materialize(['url' => 'http://10.0.0.5/a']), 'private url rejected', $errors);
 expectThrow(static fn () => $source->materialize(['url' => 'file:///etc/passwd']), 'file scheme rejected', $errors);
 expectThrow(static fn () => $source->materialize(['url' => 'http://localhost/a']), 'localhost rejected', $errors);
+expectThrow(static fn () => $source->materialize(['url' => 'http://[::ffff:127.0.0.1]/a']), 'mapped loopback url rejected', $errors);
 
 $encoded = $source->materialize([
     'name' => 'photo.jpg',
@@ -94,6 +101,10 @@ expectThrow(
 
 $deleted = $source->materialize(['del' => true]);
 expect($deleted === ['delete' => true], 'del clears the file', $errors);
+
+$files = new BitrixFileArray($source);
+expect($files->makeProperty(['del' => true], true) === ['del' => 'Y'], 'multiple delete is not wrapped', $errors);
+expect($files->makeProperty(['del' => true], false) === ['del' => 'Y'], 'single delete', $errors);
 expect(!FileSource::isDescriptor(['path' => '/a', 'url' => 'http://example.com']), 'two sources rejected', $errors);
 
 @unlink($site . '/leak.txt');

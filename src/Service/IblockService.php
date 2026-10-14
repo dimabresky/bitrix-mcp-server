@@ -692,9 +692,10 @@ final class IblockService
         }
 
         foreach (['PREVIEW_PICTURE', 'DETAIL_PICTURE'] as $picture) {
-            if (array_key_exists($picture, $fields)) {
-                $out[$picture] = $files->make($fields[$picture]);
+            if (!array_key_exists($picture, $fields) || $fields[$picture] === null) {
+                continue;
             }
+            $out[$picture] = $files->make($fields[$picture]);
         }
 
         if (array_key_exists('ACTIVE', $fields)) {

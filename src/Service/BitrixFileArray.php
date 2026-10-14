@@ -61,6 +61,9 @@ final class BitrixFileArray
      */
     public function makeProperty(mixed $value, bool $multiple, string $moduleId = ''): array
     {
+        if (self::isDelete($value)) {
+            return ['del' => 'Y'];
+        }
         if (!$multiple) {
             return $this->make($value, $moduleId);
         }
@@ -99,5 +102,10 @@ final class BitrixFileArray
         }
 
         return array_keys($value) === range(0, count($value) - 1);
+    }
+
+    private static function isDelete(mixed $value): bool
+    {
+        return is_array($value) && FileSource::isDescriptor($value) && ($value['del'] ?? null) === true;
     }
 }

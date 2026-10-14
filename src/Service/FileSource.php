@@ -92,6 +92,11 @@ final class FileSource
             return true;
         }
 
+        $embedded = self::embeddedIpv4($packed);
+        if ($embedded !== null) {
+            return self::isBlockedIp($embedded);
+        }
+
         $bytes = array_values(unpack('C16', $packed) ?: []);
         $first = $bytes[0] ?? 0;
         $second = $bytes[1] ?? 0;
@@ -387,6 +392,25 @@ final class FileSource
         $root = rtrim($root, DIRECTORY_SEPARATOR);
 
         return $path === $root || str_starts_with($path, $root . DIRECTORY_SEPARATOR);
+    }
+
+    private static function embeddedIpv4(string $packed): ?string
+    {
+        $mapped = str_repeat("\0", 10) . "\xff\xff";
+        $compatible = str_repeat("\0", 12);
+        $prefix = substr($packed, 0, 12);
+        if ($prefix !== $mapped && $prefix !== $compatible) {
+            return null;
+        }
+
+        $v4 = substr($packed, 12, 4);
+        if ($v4 === "\0\0\0\0" || $v4 === "\0\0\0\1") {
+            return null;
+        }
+
+        $text = inet_ntop($v4);
+
+        return is_string($text) ? $text : null;
     }
 
     private static function isCgnat(string $ip): bool
