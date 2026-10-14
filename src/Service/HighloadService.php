@@ -155,13 +155,17 @@ final class HighloadService
     {
         $this->whitelist->assertHlblockAllowed($hlblockId);
         $dataClass = $this->dataClass($hlblockId);
+        $files = $this->fileArrays();
+        try {
+            $result = $dataClass::add($this->prepareFileFields($hlblockId, $fields, $files));
+            if (!$result->isSuccess()) {
+                throw new RuntimeException($this->formatErrors($result));
+            }
 
-        $result = $dataClass::add($fields);
-        if (!$result->isSuccess()) {
-            throw new RuntimeException($this->formatErrors($result));
+            return $this->getRecord($hlblockId, (int) $result->getId());
+        } finally {
+            $files->cleanup();
         }
-
-        return $this->getRecord($hlblockId, (int) $result->getId());
     }
 
     /**
@@ -172,13 +176,17 @@ final class HighloadService
     {
         $this->whitelist->assertHlblockAllowed($hlblockId);
         $dataClass = $this->dataClass($hlblockId);
+        $files = $this->fileArrays();
+        try {
+            $result = $dataClass::update($recordId, $this->prepareFileFields($hlblockId, $fields, $files));
+            if (!$result->isSuccess()) {
+                throw new RuntimeException($this->formatErrors($result));
+            }
 
-        $result = $dataClass::update($recordId, $fields);
-        if (!$result->isSuccess()) {
-            throw new RuntimeException($this->formatErrors($result));
+            return $this->getRecord($hlblockId, $recordId);
+        } finally {
+            $files->cleanup();
         }
-
-        return $this->getRecord($hlblockId, $recordId);
     }
 
     public function deleteRecord(int $hlblockId, int $recordId): array
@@ -192,6 +200,49 @@ final class HighloadService
         }
 
         return ['deleted' => true, 'ID' => $recordId, 'hlblock_id' => $hlblockId];
+    }
+
+    /**
+     * @param array<string, mixed> $fields
+     * @return array<string, mixed>
+     */
+    private function prepareFileFields(int $hlblockId, array $fields, BitrixFileArray $files): array
+    {
+        $fileFields = $this->fileUserFields($hlblockId);
+        foreach ($fields as $name => $value) {
+            $field = strtoupper((string) $name);
+            if (!isset($fileFields[$field]) || $value === null) {
+                continue;
+            }
+            $fields[$name] = $files->makeProperty($value, $fileFields[$field], 'highloadblock');
+        }
+
+        return $fields;
+    }
+
+    /**
+     * @return array<string, bool> field name => multiple
+     */
+    private function fileUserFields(int $hlblockId): array
+    {
+        $map = [];
+        $ufRes = UserFieldTable::getList([
+            'filter' => [
+                '=ENTITY_ID' => 'HLBLOCK_' . $hlblockId,
+                '=USER_TYPE_ID' => 'file',
+            ],
+            'select' => ['FIELD_NAME', 'MULTIPLE'],
+        ]);
+        while ($uf = $ufRes->fetch()) {
+            $map[strtoupper((string) $uf['FIELD_NAME'])] = (string) $uf['MULTIPLE'] === 'Y';
+        }
+
+        return $map;
+    }
+
+    private function fileArrays(): BitrixFileArray
+    {
+        return new BitrixFileArray(new FileSource((string) ($_SERVER['DOCUMENT_ROOT'] ?? '')));
     }
 
     /**

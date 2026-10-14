@@ -118,7 +118,7 @@ final class IblockTools extends AbstractToolHandler
         ], fn () => $this->service->getSmartFilterSchema($iblock_id, $section_id));
     }
 
-    #[McpTool(name: 'iblock_element_add', description: 'Create element. fields_json: NAME, CODE, ACTIVE... properties_json: property VALUES on element (not property schema changes), e.g. {"AUTHOR":"text","SOURCE":1}')]
+    #[McpTool(name: 'iblock_element_add', description: 'Create element. fields_json: NAME, CODE, ACTIVE, and optional PREVIEW_PICTURE/DETAIL_PICTURE file source. properties_json: property values; type F uses the same file source {"path"|"url"|"name"+"content_base64"} or {"del":true}.')]
     public function iblockElementAdd(
         int $iblock_id,
         string $fields_json,
@@ -127,6 +127,7 @@ final class IblockTools extends AbstractToolHandler
         return $this->run('iblock_element_add', [
             'iblock_id' => $iblock_id,
             'fields_json' => $fields_json,
+            'properties_json' => $properties_json,
         ], fn () => $this->service->addElement(
             $iblock_id,
             $this->decodeJsonObject($fields_json),
@@ -134,7 +135,7 @@ final class IblockTools extends AbstractToolHandler
         ));
     }
 
-    #[McpTool(name: 'iblock_element_update', description: 'Patch element fields and property VALUES (properties_json). Does not add/update/delete property definitions on iblock.')]
+    #[McpTool(name: 'iblock_element_update', description: 'Patch element fields and property values. PREVIEW_PICTURE, DETAIL_PICTURE and type F accept a file source {"path"|"url"|"name"+"content_base64"} or {"del":true}. Does not change property definitions.')]
     public function iblockElementUpdate(
         int $iblock_id,
         int $element_id,
@@ -144,6 +145,8 @@ final class IblockTools extends AbstractToolHandler
         return $this->run('iblock_element_update', [
             'iblock_id' => $iblock_id,
             'element_id' => $element_id,
+            'fields_json' => $fields_json,
+            'properties_json' => $properties_json,
         ], fn () => $this->service->updateElement(
             $iblock_id,
             $element_id,

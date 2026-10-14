@@ -52,7 +52,28 @@ final class AuditLogger
     private function sanitizeParams(array $params): array
     {
         unset($params['token'], $params['auth_token']);
+        foreach ($params as $key => $value) {
+            if (is_string($value)) {
+                $params[$key] = $this->redactBase64($value);
+            }
+        }
 
         return $params;
+    }
+
+    private function redactBase64(string $value): string
+    {
+        $redacted = preg_replace_callback(
+            '/"content_base64"\s*:\s*"([^"]*)"/',
+            static function (array $match): string {
+                $decoded = base64_decode($match[1], true);
+                $bytes = $decoded === false ? 0 : strlen($decoded);
+
+                return '"content_base64":"[redacted, ' . $bytes . ' bytes]"';
+            },
+            $value
+        );
+
+        return is_string($redacted) ? $redacted : $value;
     }
 }
