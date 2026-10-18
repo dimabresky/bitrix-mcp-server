@@ -25,6 +25,7 @@ Do **not** copy patterns from customer projects (testmile, etc.). Use only:
 - HTTP: never write to the response body except valid MCP JSON; PHP errors/warnings → `error_log`, not output
 - Auth: `Authorization: Bearer <auth_token>` from config.php
 - Write operations: whitelist + service user `Authorize()` + audit log
+- Users are optional: `users_enabled` registers list/get/add/update/group_list; `users_delete_enabled` (only with the first flag) registers `user_delete`. Reads use `UserTable` / `GroupTable` / `UserGroupTable`; writes use `CUser`. Never return or audit `PASSWORD` / `CHECKWORD`
 
 ## Stack
 

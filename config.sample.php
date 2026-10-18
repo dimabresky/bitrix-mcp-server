@@ -22,6 +22,12 @@ return [
     // Allowed highload block IDs
     'allowed_hlblocks' => [],
 
+    // User tools are omitted from tools/list until this is true.
+    'users_enabled' => false,
+
+    // user_delete is registered only when users_enabled and this flag are both true.
+    'users_delete_enabled' => false,
+
     // Default and maximum page size for list tools
     'max_list_limit' => 50,
 
