@@ -12,8 +12,10 @@ use BitrixMcp\Service\HighloadService;
 use BitrixMcp\Service\IblockEntityResolver;
 use BitrixMcp\Service\IblockService;
 use BitrixMcp\Service\PropertyNormalizer;
+use BitrixMcp\Service\UserService;
 use BitrixMcp\Tool\HighloadTools;
 use BitrixMcp\Tool\IblockTools;
+use BitrixMcp\Tool\UserTools;
 use Mcp\Server;
 use Mcp\Server\Session\FileSessionStore;
 use RuntimeException;
@@ -40,7 +42,7 @@ final class McpServerFactory
         $hlTools = new HighloadTools($auth, $audit, $hlService);
 
         // mcp/sdk HandlerResolver accepts Closure or [ClassName::class, 'method'], not [$instance, 'method'].
-        return Server::builder()
+        $builder = Server::builder()
             ->setServerInfo('Bitrix IBlock MCP', '2.0.0')
             ->setSession(new FileSessionStore($sessionPath, $config->sessionTtl()))
             ->addTool(\Closure::fromCallable([$iblockTools, 'iblockList']), 'iblock_list')
@@ -58,7 +60,22 @@ final class McpServerFactory
             ->addTool(\Closure::fromCallable([$hlTools, 'hlblockRecordGet']), 'hlblock_record_get')
             ->addTool(\Closure::fromCallable([$hlTools, 'hlblockRecordAdd']), 'hlblock_record_add')
             ->addTool(\Closure::fromCallable([$hlTools, 'hlblockRecordUpdate']), 'hlblock_record_update')
-            ->addTool(\Closure::fromCallable([$hlTools, 'hlblockRecordDelete']), 'hlblock_record_delete')
-            ->build();
+            ->addTool(\Closure::fromCallable([$hlTools, 'hlblockRecordDelete']), 'hlblock_record_delete');
+
+        if ($config->usersEnabled()) {
+            $userTools = new UserTools($auth, $audit, new UserService($config));
+            $builder = $builder
+                ->addTool(\Closure::fromCallable([$userTools, 'userList']), 'user_list')
+                ->addTool(\Closure::fromCallable([$userTools, 'userGet']), 'user_get')
+                ->addTool(\Closure::fromCallable([$userTools, 'userAdd']), 'user_add')
+                ->addTool(\Closure::fromCallable([$userTools, 'userUpdate']), 'user_update')
+                ->addTool(\Closure::fromCallable([$userTools, 'groupList']), 'group_list');
+
+            if ($config->usersDeleteEnabled()) {
+                $builder = $builder->addTool(\Closure::fromCallable([$userTools, 'userDelete']), 'user_delete');
+            }
+        }
+
+        return $builder->build();
     }
 }
