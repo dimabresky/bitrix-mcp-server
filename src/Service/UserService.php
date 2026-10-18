@@ -22,6 +22,9 @@ final class UserService
         'SECOND_NAME',
         'ACTIVE',
         'PERSONAL_PHONE',
+        'WORK_PHONE',
+        'PERSONAL_MOBILE',
+        'XML_ID',
     ];
 
     private const FILTER_FIELDS = [
@@ -33,6 +36,8 @@ final class UserService
         'SECOND_NAME',
         'ACTIVE',
         'PERSONAL_PHONE',
+        'WORK_PHONE',
+        'PERSONAL_MOBILE',
         'XML_ID',
     ];
 
@@ -385,6 +390,9 @@ final class UserService
             'SECOND_NAME' => (string) ($row['SECOND_NAME'] ?? ''),
             'ACTIVE' => (string) ($row['ACTIVE'] ?? ''),
             'PERSONAL_PHONE' => (string) ($row['PERSONAL_PHONE'] ?? ''),
+            'WORK_PHONE' => (string) ($row['WORK_PHONE'] ?? ''),
+            'PERSONAL_MOBILE' => (string) ($row['PERSONAL_MOBILE'] ?? ''),
+            'XML_ID' => (string) ($row['XML_ID'] ?? ''),
         ];
     }
 }

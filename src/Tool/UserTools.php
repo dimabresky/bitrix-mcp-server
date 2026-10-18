@@ -21,7 +21,7 @@ final class UserTools extends AbstractToolHandler
 
     #[McpTool(
         name: 'user_list',
-        description: 'List users. filter_json is a flat object: ID, LOGIN, EMAIL, NAME, LAST_NAME, SECOND_NAME, ACTIVE, PERSONAL_PHONE, XML_ID. Password and checkword are never returned.',
+        description: 'List users. filter_json is a flat object: ID, LOGIN, EMAIL, NAME, LAST_NAME, SECOND_NAME, ACTIVE, PERSONAL_PHONE, WORK_PHONE, PERSONAL_MOBILE, XML_ID. Password and checkword are never returned.',
     )]
     public function userList(
         ?string $filter_json = null,

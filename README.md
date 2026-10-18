@@ -148,7 +148,7 @@ Endpoint будет доступен по адресу вида:
 | `user_delete` | `confirm: true` и флаг `users_delete_enabled`. `service_user_id` удалять нельзя |
 | `group_list` | Группы: `ID`, `NAME`, `STRING_ID`, `ACTIVE`. Только чтение |
 
-Поля записи: `LOGIN`, `EMAIL`, `NAME`, `LAST_NAME`, `SECOND_NAME`, `ACTIVE` (`Y`/`N`), `PERSONAL_PHONE`, `WORK_PHONE`, `PERSONAL_MOBILE`, `XML_ID`, `PASSWORD`, `CONFIRM_PASSWORD`, `GROUP_ID`. Если `CONFIRM_PASSWORD` нет, берётся `PASSWORD`.
+Поля записи: `LOGIN`, `EMAIL`, `NAME`, `LAST_NAME`, `SECOND_NAME`, `ACTIVE` (`Y`/`N`), `PERSONAL_PHONE`, `WORK_PHONE`, `PERSONAL_MOBILE`, `XML_ID`, `PASSWORD`, `CONFIRM_PASSWORD`, `GROUP_ID`. Если `CONFIRM_PASSWORD` нет, берётся `PASSWORD`. `user_list` и `user_get` возвращают эти поля, кроме пароля; у `user_get` ещё `GROUP_ID`.
 
 ## Ограничения: свойства инфоблока
 
