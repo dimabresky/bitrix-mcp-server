@@ -73,7 +73,7 @@ final class HighloadTools extends AbstractToolHandler
         ], fn () => $this->service->getRecord($hlblock_id, $record_id));
     }
 
-    #[McpTool(name: 'hlblock_record_add', description: 'Create HL record. fields_json with UF_* keys.')]
+    #[McpTool(name: 'hlblock_record_add', description: 'Create HL record. fields_json with UF_* keys. File UF values use {"path"|"url"|"name"+"content_base64"} or {"del":true}.')]
     public function hlblockRecordAdd(int $hlblock_id, string $fields_json): array
     {
         return $this->run('hlblock_record_add', [
@@ -82,7 +82,7 @@ final class HighloadTools extends AbstractToolHandler
         ], fn () => $this->service->addRecord($hlblock_id, $this->decodeJsonObject($fields_json)));
     }
 
-    #[McpTool(name: 'hlblock_record_update', description: 'Update HL record (patch fields_json).')]
+    #[McpTool(name: 'hlblock_record_update', description: 'Update HL record (patch fields_json). File UF values use {"path"|"url"|"name"+"content_base64"} or {"del":true}.')]
     public function hlblockRecordUpdate(int $hlblock_id, int $record_id, string $fields_json): array
     {
         return $this->run('hlblock_record_update', [

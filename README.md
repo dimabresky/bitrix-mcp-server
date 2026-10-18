@@ -1,6 +1,6 @@
 # Bitrix MCP Server
 
-MCP-сервер для **чтения и записи** данных в **инфоблоках** и **highload-блоках** Bitrix.
+MCP-сервер для **чтения и записи** данных в **инфоблоках** и **highload-блоках** Bitrix. Пользователи и их группы доступны только если это включено в `config.php`.
 
 Работает **только по HTTP** — протокол [Model Context Protocol](https://modelcontextprotocol.io/) (**Streamable HTTP**). Точка входа — обычный PHP-скрипт на том же сайте Bitrix (`public/index.php`). Клиент подключается по **URL** и Bearer-токену; **не нужны** `command` / `args`, stdio и SSH-туннель к `server.php`.
 
@@ -27,7 +27,7 @@ public/index.php
 2. **Авторизация MCP** — заголовок `Authorization: Bearer …` (или `X-MCP-Token` для отладки). Токен сверяется с `auth_token` в `config.php`.
 3. **Bitrix** поднимается через `prolog_before.php`; все операции выполняются от имени `service_user_id`.
 4. **MCP-сессии** (initialize, tools/list, tools/call) хранятся в файловом хранилище `session_store_path` — это часть Streamable HTTP, не отдельный процесс.
-5. **Whitelist** — tools работают только с ID из `allowed_iblocks` / `allowed_hlblocks`.
+5. **Whitelist** — tools работают только с ID из `allowed_iblocks` / `allowed_hlblocks`. Tools пользователей нет в `tools/list`, пока `users_enabled` не `true`; `user_delete` — только если дополнительно `users_delete_enabled`.
 6. **Аудит** — каждый вызов tool пишется в `audit_log_path`.
 
 Legacy-режим через `server.php` и stdio **удалён**. Если файл `server.php` есть в каталоге — его нужно убрать.
@@ -69,6 +69,8 @@ Endpoint будет доступен по адресу вида:
 | `auth_token` | Секретный Bearer-токен для MCP-клиентов |
 | `allowed_iblocks` | Массив ID инфоблоков |
 | `allowed_hlblocks` | Массив ID highload-блоков |
+| `users_enabled` | `true` регистрирует tools пользователей. По умолчанию `false` — tools не появляются |
+| `users_delete_enabled` | `true` регистрирует `user_delete`. Работает только вместе с `users_enabled`. По умолчанию `false` |
 | `max_list_limit` | Лимит записей в list-tools (фактический максимум — **100**) |
 | `audit_log_path` | Путь к файлу аудита (например `logs/audit.log`) |
 | `session_store_path` | Каталог MCP HTTP-сессий (writable) |
@@ -133,6 +135,21 @@ Endpoint будет доступен по адресу вида:
 | `hlblock_record_update` | Частичное обновление записи |
 | `hlblock_record_delete` | Требует `confirm: true` |
 
+### Пользователи
+
+Пока `users_enabled` не `true`, этих tools нет. `user_delete` регистрируется только при `users_enabled` и `users_delete_enabled`. Пароль, чекворд и код подтверждения в ответы не попадают.
+
+| Tool | Описание |
+|------|----------|
+| `user_list` | Список пользователей (`filter_json`, `limit`, `offset`) |
+| `user_get` | Пользователь и `GROUP_ID` |
+| `user_add` | `fields_json`: обязательны `LOGIN`, `EMAIL`, `PASSWORD`. `GROUP_ID` — массив ID групп |
+| `user_update` | Те же поля. `GROUP_ID` заменяет состав групп; без ключа группы не меняются. `service_user_id` менять нельзя |
+| `user_delete` | `confirm: true` и флаг `users_delete_enabled`. `service_user_id` удалять нельзя |
+| `group_list` | Группы: `ID`, `NAME`, `STRING_ID`, `ACTIVE`. Только чтение |
+
+Поля записи: `LOGIN`, `EMAIL`, `NAME`, `LAST_NAME`, `SECOND_NAME`, `ACTIVE` (`Y`/`N`), `PERSONAL_PHONE`, `WORK_PHONE`, `PERSONAL_MOBILE`, `XML_ID`, `PASSWORD`, `CONFIRM_PASSWORD`, `GROUP_ID`. Если `CONFIRM_PASSWORD` нет, берётся `PASSWORD`. `user_list` и `user_get` возвращают эти поля, кроме пароля; у `user_get` ещё `GROUP_ID`.
+
 ## Ограничения: свойства инфоблока
 
 | Уровень | Что это | Статус |
@@ -142,7 +159,9 @@ Endpoint будет доступен по адресу вида:
 
 Что **можно**: `iblock_schema` (чтение), запись значений через `iblock_element_*`.
 
-Чего **нет**: `iblock_property_*`, управление enum, файловые свойства `F` на элементах.
+Чего **нет**: `iblock_property_*`, управление enum.
+
+Файлы пишутся значением: `PREVIEW_PICTURE` / `DETAIL_PICTURE`, свойство типа `F`, UF с типом `file`.
 
 Для HL: запись `UF_*` в записях поддерживается; изменение структуры HL-блока — нет.
 
@@ -157,7 +176,8 @@ Endpoint будет доступен по адресу вида:
 | Привязка к разделу `G` | ID раздела |
 | Справочник (HL) | строка `UF_XML_ID` |
 | HTML | HTML-строка |
-| Множественное | JSON-массив `["a","b"]` |
+| Файл `F`, `PREVIEW_PICTURE`, `DETAIL_PICTURE`, UF `file` | Объект с одним источником: `{"path":"/от/корня/сайта"}`, `{"url":"https://..."}` или `{"name":"a.jpg","content_base64":"..."}`. `{"del":true}` снимает файл. До 5 МБ. `path` только внутри корня сайта, `url` без редиректов и без частных адресов |
+| Множественное | JSON-массив `["a","b"]`; для файлов — массив таких объектов |
 
 ## Примеры аргументов tools
 

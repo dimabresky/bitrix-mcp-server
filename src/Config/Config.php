@@ -90,6 +90,16 @@ final class Config
         return max(60, (int) ($this->data['session_ttl'] ?? 3600));
     }
 
+    public function usersEnabled(): bool
+    {
+        return ($this->data['users_enabled'] ?? false) === true;
+    }
+
+    public function usersDeleteEnabled(): bool
+    {
+        return $this->usersEnabled() && ($this->data['users_delete_enabled'] ?? false) === true;
+    }
+
     public function resolveLimit(?int $requested): int
     {
         $max = $this->maxListLimit();
