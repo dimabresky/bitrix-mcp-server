@@ -241,17 +241,9 @@ final class FileSource
             return [$host];
         }
 
-        $ips = [];
-        $records = @dns_get_record($host, DNS_A + DNS_AAAA);
-        if (is_array($records)) {
-            foreach ($records as $record) {
-                if (isset($record['ip']) && is_string($record['ip'])) {
-                    $ips[] = $record['ip'];
-                }
-                if (isset($record['ipv6']) && is_string($record['ipv6'])) {
-                    $ips[] = $record['ipv6'];
-                }
-            }
+        $ips = self::collectDnsIps($host, DNS_A + DNS_AAAA);
+        if ($ips === []) {
+            $ips = self::collectDnsIps($host, DNS_AAAA);
         }
         if ($ips === []) {
             $v4 = @gethostbynamel($host);
@@ -265,6 +257,29 @@ final class FileSource
         foreach ($ips as $ip) {
             if (self::isBlockedIp($ip)) {
                 throw new InvalidArgumentException('File URL host is not allowed.');
+            }
+        }
+
+        return $ips;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function collectDnsIps(string $host, int $type): array
+    {
+        $records = @dns_get_record($host, $type);
+        if (!is_array($records)) {
+            return [];
+        }
+
+        $ips = [];
+        foreach ($records as $record) {
+            if (isset($record['ip']) && is_string($record['ip'])) {
+                $ips[] = $record['ip'];
+            }
+            if (isset($record['ipv6']) && is_string($record['ipv6'])) {
+                $ips[] = $record['ipv6'];
             }
         }
 

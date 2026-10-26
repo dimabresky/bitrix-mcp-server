@@ -239,6 +239,7 @@ Endpoint будет доступен по адресу вида:
 **Локально** (Bitrix не нужен — структура и autoload):
 
 ```bash
+php scripts/check-file-source.php
 php scripts/verify-structure.php
 ```
 

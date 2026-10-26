@@ -189,7 +189,7 @@ final class IblockService
         $this->whitelist->assertIblockAllowed($iblockId);
         $elementClass = $this->resolver->elementDataClass($iblockId);
 
-        $selectFields = $select === null
+        $selectFields = $select === null || $select === []
             ? ['ID', 'NAME', 'CODE', 'ACTIVE', 'IBLOCK_SECTION_ID', 'TIMESTAMP_X']
             : WhitelistGuard::sanitizeSelect($select);
         $query = $elementClass::query()
