@@ -107,13 +107,13 @@ final class HighloadService
         $dataClass = $this->dataClass($hlblockId);
 
         $params = [
-            'filter' => $filter ?? [],
+            'filter' => WhitelistGuard::sanitizeFilter($filter ?? []),
             'limit' => $this->config->resolveLimit($limit),
-            'offset' => max(0, $offset),
+            'offset' => $this->config->resolveOffset($offset),
             'order' => ['ID' => 'DESC'],
         ];
         if ($select !== null && $select !== []) {
-            $params['select'] = $select;
+            $params['select'] = WhitelistGuard::sanitizeSelect($select);
         }
 
         $rows = $dataClass::getList($params);

@@ -39,6 +39,14 @@ final class BitrixBootstrap
 
         $_SERVER['DOCUMENT_ROOT'] = $docRoot;
 
+        if (!defined('BX_SECURITY_SESSION_VIRTUAL')) {
+            define('BX_SECURITY_SESSION_VIRTUAL', true);
+        }
+        $siteId = $config->siteId();
+        if ($siteId !== '' && !defined('SITE_ID')) {
+            define('SITE_ID', $siteId);
+        }
+
         require $docRoot . '/bitrix/modules/main/include/prolog_before.php';
 
         if (!\Bitrix\Main\Loader::includeModule('iblock')) {
@@ -59,7 +67,7 @@ final class BitrixBootstrap
             throw new RuntimeException('Bitrix $USER is not available after prolog_before');
         }
 
-        if (!$USER->Authorize($userId)) {
+        if (!$USER->Authorize($userId, false, false)) {
             throw new RuntimeException('Failed to authorize service user ID ' . $userId);
         }
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace BitrixMcp\Security;
 
 use BitrixMcp\Config\Config;
+use InvalidArgumentException;
 use RuntimeException;
 
 final class WhitelistGuard
@@ -67,5 +68,72 @@ final class WhitelistGuard
         }
 
         return $filtered;
+    }
+
+    /**
+     * @param array<mixed> $filter
+     * @return array<string, mixed>
+     */
+    public static function sanitizeFilter(array $filter): array
+    {
+        $clean = [];
+        foreach ($filter as $key => $value) {
+            if (
+                !is_string($key)
+                || strcasecmp($key, 'LOGIC') === 0
+                || self::isFilterKey($key) === false
+                || self::isFlatValue($value) === false
+            ) {
+                throw new InvalidArgumentException('Filter must be a flat object of field names.');
+            }
+            $clean[$key] = $value;
+        }
+
+        return $clean;
+    }
+
+    /**
+     * @param list<mixed> $select
+     * @return list<string>
+     */
+    public static function sanitizeSelect(array $select): array
+    {
+        $clean = [];
+        foreach ($select as $field) {
+            $name = (string) $field;
+            if (self::isFieldName($name) === false) {
+                throw new InvalidArgumentException('Select field is not allowed: ' . $name);
+            }
+            $clean[] = $name;
+        }
+
+        return $clean;
+    }
+
+    private static function isFilterKey(string $key): bool
+    {
+        return preg_match('/^(>=|<=|!=|!%|!@|><|>|<|=|!|%|@)?[A-Za-z][A-Za-z0-9_]*$/', $key) === 1;
+    }
+
+    private static function isFieldName(string $name): bool
+    {
+        return preg_match('/^[A-Za-z][A-Za-z0-9_]*$/', $name) === 1;
+    }
+
+    private static function isFlatValue(mixed $value): bool
+    {
+        if (is_scalar($value) || $value === null) {
+            return true;
+        }
+        if (!is_array($value)) {
+            return false;
+        }
+        foreach ($value as $item) {
+            if (!is_scalar($item) && $item !== null) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }
