@@ -127,7 +127,7 @@ final class IblockService
                 'G' => 'linked section ID',
                 'directory' => 'UF_XML_ID from HL directory',
                 'HTML' => 'HTML string (USER_TYPE HTML)',
-                'F' => 'file source: {"path":"/from/site/root"}, {"url":"https://..."}, {"name":"a.jpg","content_base64":"..."}, or {"del":true}',
+                'F' => 'file source: {"path":"/upload/file.jpg"}, {"url":"https://..."}, {"name":"a.jpg","content_base64":"..."}, or {"del":true}',
                 'Polygon' => 'JSON string of rings [[[lat,lon],...]]; arrays are json_encoded on write',
                 'multiple' => 'JSON array of values',
                 'PREVIEW_PICTURE' => 'same file source as property type F',
@@ -153,7 +153,7 @@ final class IblockService
             ->setSelect(['ID', 'NAME', 'CODE', 'ACTIVE', 'IBLOCK_SECTION_ID', 'DEPTH_LEVEL', 'SORT'])
             ->setOrder(['LEFT_MARGIN' => 'ASC'])
             ->setLimit($this->config->resolveLimit($limit))
-            ->setOffset(max(0, $offset));
+            ->setOffset($this->config->resolveOffset($offset));
 
         $this->applyQueryFilter($query, $filter ?? []);
 
@@ -189,12 +189,14 @@ final class IblockService
         $this->whitelist->assertIblockAllowed($iblockId);
         $elementClass = $this->resolver->elementDataClass($iblockId);
 
-        $selectFields = $select ?? ['ID', 'NAME', 'CODE', 'ACTIVE', 'IBLOCK_SECTION_ID', 'TIMESTAMP_X'];
+        $selectFields = $select === null || $select === []
+            ? ['ID', 'NAME', 'CODE', 'ACTIVE', 'IBLOCK_SECTION_ID', 'TIMESTAMP_X']
+            : WhitelistGuard::sanitizeSelect($select);
         $query = $elementClass::query()
             ->setSelect($selectFields)
             ->setOrder(['ID' => 'DESC'])
             ->setLimit($this->config->resolveLimit($limit))
-            ->setOffset(max(0, $offset));
+            ->setOffset($this->config->resolveOffset($offset));
 
         $this->applyQueryFilter($query, $filter ?? []);
 
@@ -664,16 +666,11 @@ final class IblockService
      */
     private function applyQueryFilter(object $query, array $filter): void
     {
-        foreach ($filter as $field => $value) {
-            $field = preg_replace('/[^A-Za-z0-9_]/', '', (string) $field) ?? '';
-            if ($field === '') {
-                continue;
-            }
-            if (!method_exists($query, 'where')) {
-                break;
-            }
-            $query->where($field, $value);
+        if (!method_exists($query, 'setFilter')) {
+            return;
         }
+
+        $query->setFilter(WhitelistGuard::sanitizeFilter($filter));
     }
 
     /**
@@ -709,43 +706,6 @@ final class IblockService
     private function fileArrays(): BitrixFileArray
     {
         return new BitrixFileArray(new FileSource((string) ($_SERVER['DOCUMENT_ROOT'] ?? '')));
-    }
-
-    /**
-     * @param array<string, mixed> $fields
-     */
-    private function applyElementFields(object $element, array $fields, bool $patch = false): void
-    {
-        $map = [
-            'NAME' => 'setName',
-            'CODE' => 'setCode',
-            'ACTIVE' => 'setActive',
-            'PREVIEW_TEXT' => 'setPreviewText',
-            'DETAIL_TEXT' => 'setDetailText',
-            'SORT' => 'setSort',
-            'IBLOCK_SECTION_ID' => 'setIblockSectionId',
-        ];
-
-        foreach ($map as $key => $method) {
-            if (!array_key_exists($key, $fields)) {
-                if (!$patch && $key === 'NAME') {
-                    throw new RuntimeException('Field NAME is required when creating an element.');
-                }
-                continue;
-            }
-
-            if (!method_exists($element, $method)) {
-                continue;
-            }
-
-            $value = $fields[$key];
-            if ($key === 'ACTIVE') {
-                $element->$method($value === 'Y' || $value === true || $value === 1 || $value === '1');
-                continue;
-            }
-
-            $element->$method($value);
-        }
     }
 
     private function fieldToGetter(string $field): string

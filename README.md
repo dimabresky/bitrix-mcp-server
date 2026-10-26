@@ -176,7 +176,7 @@ Endpoint будет доступен по адресу вида:
 | Привязка к разделу `G` | ID раздела |
 | Справочник (HL) | строка `UF_XML_ID` |
 | HTML | HTML-строка |
-| Файл `F`, `PREVIEW_PICTURE`, `DETAIL_PICTURE`, UF `file` | Объект с одним источником: `{"path":"/от/корня/сайта"}`, `{"url":"https://..."}` или `{"name":"a.jpg","content_base64":"..."}`. `{"del":true}` снимает файл. До 5 МБ. `path` только внутри корня сайта, `url` без редиректов и без частных адресов |
+| Файл `F`, `PREVIEW_PICTURE`, `DETAIL_PICTURE`, UF `file` | Объект с одним источником: `{"path":"/upload/file.jpg"}`, `{"url":"https://..."}` или `{"name":"a.jpg","content_base64":"..."}`. `{"del":true}` снимает файл. До 5 МБ. `path` только файл внутри `/upload`. `url` — http(s) на порту 80 или 443, без редиректов и без частных адресов |
 | Множественное | JSON-массив `["a","b"]`; для файлов — массив таких объектов |
 
 ## Примеры аргументов tools
@@ -239,6 +239,7 @@ Endpoint будет доступен по адресу вида:
 **Локально** (Bitrix не нужен — структура и autoload):
 
 ```bash
+php scripts/check-file-source.php
 php scripts/verify-structure.php
 ```
 
@@ -273,6 +274,18 @@ curl -s -X POST https://staging.example.com/local/bitrix-mcp-server/public/ \
 - Удаление только с `confirm: true`
 - Аудит всех вызовов tools
 - `config.php` с секретами не коммитить
+- Снаружи открыт только `public/`
+
+На nginx:
+
+```nginx
+location ^~ /local/bitrix-mcp-server/ {
+    deny all;
+}
+location ^~ /local/bitrix-mcp-server/public/ {
+    allow all;
+}
+```
 
 ## Документация
 

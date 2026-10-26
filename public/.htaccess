@@ -1,2 +1,10 @@
 Options -Indexes
 DirectoryIndex index.php
+
+<IfModule mod_authz_core.c>
+    AuthMerging Off
+    Require all granted
+</IfModule>
+<IfModule !mod_authz_core.c>
+    Allow from all
+</IfModule>

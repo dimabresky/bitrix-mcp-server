@@ -95,14 +95,21 @@ $added = $prepare->invoke($userService, [
     'LOGIN' => 'a',
     'EMAIL' => 'a@b.c',
     'PASSWORD' => 'secret',
-    'GROUP_ID' => [1, '2'],
+    'GROUP_ID' => [2, '3'],
 ], true);
 if (
     ($added['PASSWORD'] ?? '') !== 'secret'
     || ($added['CONFIRM_PASSWORD'] ?? '') !== 'secret'
-    || ($added['GROUP_ID'] ?? []) !== [1, 2]
+    || ($added['GROUP_ID'] ?? []) !== [2, 3]
 ) {
     $errors[] = 'user add must keep PASSWORD, copy CONFIRM_PASSWORD, and normalize GROUP_ID';
+}
+
+try {
+    $prepare->invoke($userService, ['GROUP_ID' => [1]], false);
+    $errors[] = 'administrators group must be rejected';
+} catch (InvalidArgumentException $e) {
+    // expected
 }
 
 $updated = $prepare->invoke($userService, ['PASSWORD' => 'x'], false);

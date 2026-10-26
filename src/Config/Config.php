@@ -110,6 +110,11 @@ final class Config
         return min($requested, $max);
     }
 
+    public function resolveOffset(int $offset): int
+    {
+        return min(max(0, $offset), 10000);
+    }
+
     /**
      * @param mixed $value
      * @return list<int>
