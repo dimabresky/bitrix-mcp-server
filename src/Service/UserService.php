@@ -75,7 +75,7 @@ final class UserService
             'select' => self::PUBLIC_FIELDS,
             'order' => ['ID' => 'DESC'],
             'limit' => $this->config->resolveLimit($limit),
-            'offset' => max(0, $offset),
+            'offset' => $this->config->resolveOffset($offset),
         ]);
 
         $result = [];
@@ -368,6 +368,10 @@ final class UserService
             }
             if ($intId <= 0) {
                 throw new InvalidArgumentException('GROUP_ID must contain positive integers.');
+            }
+            // shortcut: только группа 1, свои админ-группы не режутся
+            if ($intId === 1) {
+                throw new InvalidArgumentException('GROUP_ID must not include the administrators group.');
             }
             $ids[] = $intId;
         }

@@ -100,6 +100,16 @@ final class Config
         return $this->usersEnabled() && ($this->data['users_delete_enabled'] ?? false) === true;
     }
 
+    public function iblockCreateEnabled(): bool
+    {
+        return ($this->data['iblock_create_enabled'] ?? false) === true;
+    }
+
+    public function hlblockCreateEnabled(): bool
+    {
+        return ($this->data['hlblock_create_enabled'] ?? false) === true;
+    }
+
     public function resolveLimit(?int $requested): int
     {
         $max = $this->maxListLimit();
@@ -108,6 +118,11 @@ final class Config
         }
 
         return min($requested, $max);
+    }
+
+    public function resolveOffset(int $offset): int
+    {
+        return min(max(0, $offset), 10000);
     }
 
     /**

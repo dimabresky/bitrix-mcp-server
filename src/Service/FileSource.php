@@ -9,7 +9,7 @@ use InvalidArgumentException;
 /**
  * Turns a JSON file source into a local path. Does not call Bitrix.
  *
- * A source has exactly one of: path, url, or name+content_base64.
+ * A source has exactly one of: path (a file under /upload), url, or name+content_base64.
  * {"del": true} clears the file.
  */
 final class FileSource
@@ -97,6 +97,11 @@ final class FileSource
             return self::isBlockedIp($embedded);
         }
 
+        $transition = self::transitionIpv4($packed);
+        if ($transition !== null) {
+            return self::isBlockedIp($transition);
+        }
+
         $bytes = array_values(unpack('C16', $packed) ?: []);
         $first = $bytes[0] ?? 0;
         $second = $bytes[1] ?? 0;
@@ -126,14 +131,25 @@ final class FileSource
 
         $candidate = $root . $path;
         $real = realpath($candidate);
-        if ($real === false || !is_file($real) || !$this->isInside($root, $real)) {
-            throw new InvalidArgumentException('File path is outside the site root or is not a file.');
+        $upload = realpath($root . DIRECTORY_SEPARATOR . 'upload');
+        if (
+            $upload === false
+            || !is_dir($upload)
+            || $real === false
+            || !is_file($real)
+            || !$this->isInside($root, $real)
+            || !$this->isInside($upload, $real)
+        ) {
+            throw new InvalidArgumentException('File path must be a file inside /upload.');
         }
+
+        $name = basename($real);
+        $this->assertAllowedFileName($name);
 
         return [
             'delete' => false,
             'path' => $real,
-            'name' => basename($real),
+            'name' => $name,
             'temporary' => false,
         ];
     }
@@ -157,6 +173,9 @@ final class FileSource
         $host = (string) ($parts['host'] ?? '');
         if ($host === '' || strcasecmp($host, 'localhost') === 0) {
             throw new InvalidArgumentException('File URL host is not allowed.');
+        }
+        if (isset($parts['port']) && !in_array((int) $parts['port'], [80, 443], true)) {
+            throw new InvalidArgumentException('File URL port is not allowed.');
         }
 
         $ips = $this->resolvePublicIps($host);
@@ -222,17 +241,9 @@ final class FileSource
             return [$host];
         }
 
-        $ips = [];
-        $records = @dns_get_record($host, DNS_A + DNS_AAAA);
-        if (is_array($records)) {
-            foreach ($records as $record) {
-                if (isset($record['ip']) && is_string($record['ip'])) {
-                    $ips[] = $record['ip'];
-                }
-                if (isset($record['ipv6']) && is_string($record['ipv6'])) {
-                    $ips[] = $record['ipv6'];
-                }
-            }
+        $ips = self::collectDnsIps($host, DNS_A + DNS_AAAA);
+        if ($ips === []) {
+            $ips = self::collectDnsIps($host, DNS_AAAA);
         }
         if ($ips === []) {
             $v4 = @gethostbynamel($host);
@@ -246,6 +257,29 @@ final class FileSource
         foreach ($ips as $ip) {
             if (self::isBlockedIp($ip)) {
                 throw new InvalidArgumentException('File URL host is not allowed.');
+            }
+        }
+
+        return $ips;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function collectDnsIps(string $host, int $type): array
+    {
+        $records = @dns_get_record($host, $type);
+        if (!is_array($records)) {
+            return [];
+        }
+
+        $ips = [];
+        foreach ($records as $record) {
+            if (isset($record['ip']) && is_string($record['ip'])) {
+                $ips[] = $record['ip'];
+            }
+            if (isset($record['ipv6']) && is_string($record['ipv6'])) {
+                $ips[] = $record['ipv6'];
             }
         }
 
@@ -365,7 +399,20 @@ final class FileSource
             throw new InvalidArgumentException('File name must be a single path segment.');
         }
 
+        $this->assertAllowedFileName($name);
+
         return $name;
+    }
+
+    private function assertAllowedFileName(string $name): void
+    {
+        $extension = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+        if (
+            str_starts_with($name, '.')
+            || in_array($extension, ['php', 'phtml', 'phar', 'pht', 'cgi', 'pl', 'exe', 'htaccess'], true)
+        ) {
+            throw new InvalidArgumentException('File name is not allowed.');
+        }
     }
 
     private function tempPath(string $name): string
@@ -392,6 +439,40 @@ final class FileSource
         $root = rtrim($root, DIRECTORY_SEPARATOR);
 
         return $path === $root || str_starts_with($path, $root . DIRECTORY_SEPARATOR);
+    }
+
+    private static function transitionIpv4(string $packed): ?string
+    {
+        $bytes = array_values(unpack('C16', $packed) ?: []);
+        if (count($bytes) !== 16) {
+            return null;
+        }
+
+        if ($bytes[0] === 0x20 && $bytes[1] === 0x02) {
+            return self::ipv4Text(substr($packed, 2, 4));
+        }
+
+        if ($bytes[0] === 0x20 && $bytes[1] === 0x01 && $bytes[2] === 0x00 && $bytes[3] === 0x00) {
+            return self::ipv4Text(substr($packed, 12, 4) ^ str_repeat("\xff", 4));
+        }
+
+        $nat64 = inet_pton('64:ff9b::');
+        if ($nat64 !== false && substr($packed, 0, 12) === substr($nat64, 0, 12)) {
+            return self::ipv4Text(substr($packed, 12, 4));
+        }
+
+        return null;
+    }
+
+    private static function ipv4Text(string $packed): ?string
+    {
+        if (strlen($packed) !== 4) {
+            return null;
+        }
+
+        $text = inet_ntop($packed);
+
+        return is_string($text) ? $text : null;
     }
 
     private static function embeddedIpv4(string $packed): ?string

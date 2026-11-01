@@ -62,6 +62,16 @@ final class McpServerFactory
             ->addTool(\Closure::fromCallable([$hlTools, 'hlblockRecordUpdate']), 'hlblock_record_update')
             ->addTool(\Closure::fromCallable([$hlTools, 'hlblockRecordDelete']), 'hlblock_record_delete');
 
+        if ($config->iblockCreateEnabled()) {
+            $builder = $builder
+                ->addTool(\Closure::fromCallable([$iblockTools, 'iblockTypeAdd']), 'iblock_type_add')
+                ->addTool(\Closure::fromCallable([$iblockTools, 'iblockAdd']), 'iblock_add');
+        }
+
+        if ($config->hlblockCreateEnabled()) {
+            $builder = $builder->addTool(\Closure::fromCallable([$hlTools, 'hlblockAdd']), 'hlblock_add');
+        }
+
         if ($config->usersEnabled()) {
             $userTools = new UserTools($auth, $audit, new UserService($config));
             $builder = $builder

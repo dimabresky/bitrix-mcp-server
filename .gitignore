@@ -1,5 +1,7 @@
 /vendor/
 /config.php
-/logs/
-/sessions/
+/logs/*
+!/logs/.htaccess
+/sessions/*
+!/sessions/.htaccess
 /.idea/

@@ -8,6 +8,15 @@ use BitrixMcp\Config\Config;
 
 final class AuditLogger
 {
+    /** @var list<string> */
+    private const REDACTED_KEYS = [
+        'token',
+        'auth_token',
+        'password',
+        'confirm_password',
+        'content_base64',
+    ];
+
     public function __construct(
         private readonly Config $config,
     ) {
@@ -24,7 +33,7 @@ final class AuditLogger
         }
 
         $dir = dirname($path);
-        if (!is_dir($dir) && !mkdir($dir, 0755, true) && !is_dir($dir)) {
+        if (!is_dir($dir) && !mkdir($dir, 0750, true) && !is_dir($dir)) {
             fwrite(STDERR, "AuditLogger: cannot create directory {$dir}\n");
 
             return;
@@ -43,6 +52,7 @@ final class AuditLogger
             json_encode($entry, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR) . PHP_EOL,
             FILE_APPEND | LOCK_EX
         );
+        chmod($path, 0640);
     }
 
     /**
@@ -51,25 +61,34 @@ final class AuditLogger
      */
     private function sanitizeParams(array $params): array
     {
-        unset($params['token'], $params['auth_token']);
+        $clean = [];
         foreach ($params as $key => $value) {
-            if (is_string($value)) {
-                $params[$key] = $this->redactBase64($value);
+            if (is_string($key) && in_array(strtolower($key), self::REDACTED_KEYS, true)) {
+                continue;
             }
+            if (is_array($value)) {
+                $clean[$key] = $this->sanitizeParams($value);
+                continue;
+            }
+            $clean[$key] = is_string($value) ? $this->redactSecrets($value) : $value;
         }
 
-        return $params;
+        return $clean;
     }
 
-    private function redactBase64(string $value): string
+    private function redactSecrets(string $value): string
     {
         $redacted = preg_replace_callback(
-            '/"content_base64"\s*:\s*"([^"]*)"/',
+            '/"(content_base64|password|confirm_password)"\s*:\s*"([^"]*)"/i',
             static function (array $match): string {
-                $decoded = base64_decode($match[1], true);
-                $bytes = $decoded === false ? 0 : strlen($decoded);
+                if (strtolower($match[1]) === 'content_base64') {
+                    $decoded = base64_decode($match[2], true);
+                    $bytes = $decoded === false ? 0 : strlen($decoded);
 
-                return '"content_base64":"[redacted, ' . $bytes . ' bytes]"';
+                    return '"' . $match[1] . '":"[redacted, ' . $bytes . ' bytes]"';
+                }
+
+                return '"' . $match[1] . '":"[redacted]"';
             },
             $value
         );

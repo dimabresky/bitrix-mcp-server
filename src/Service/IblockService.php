@@ -9,8 +9,11 @@ use Bitrix\Iblock\PropertyEnumerationTable;
 use Bitrix\Iblock\PropertyTable;
 use BitrixMcp\Config\Config;
 use BitrixMcp\Security\WhitelistGuard;
+use CIBlock;
 use CIBlockElement;
 use CIBlockSectionPropertyLink;
+use CIBlockType;
+use InvalidArgumentException;
 use RuntimeException;
 
 final class IblockService
@@ -23,6 +26,12 @@ final class IblockService
 
     public const PROPERTIES_MODE_ALL = 'all';
     public const PROPERTIES_MODE_SMART_FILTER = 'smart_filter';
+
+    /** @var list<string> */
+    private const TYPE_FIELDS = ['ID', 'NAME', 'SECTIONS', 'SORT'];
+
+    /** @var list<string> */
+    private const IBLOCK_FIELDS = ['IBLOCK_TYPE_ID', 'NAME', 'CODE', 'API_CODE', 'ACTIVE', 'SORT', 'LID'];
     public function __construct(
         private readonly Config $config,
         private readonly WhitelistGuard $whitelist,
@@ -127,7 +136,7 @@ final class IblockService
                 'G' => 'linked section ID',
                 'directory' => 'UF_XML_ID from HL directory',
                 'HTML' => 'HTML string (USER_TYPE HTML)',
-                'F' => 'file source: {"path":"/from/site/root"}, {"url":"https://..."}, {"name":"a.jpg","content_base64":"..."}, or {"del":true}',
+                'F' => 'file source: {"path":"/upload/file.jpg"}, {"url":"https://..."}, {"name":"a.jpg","content_base64":"..."}, or {"del":true}',
                 'Polygon' => 'JSON string of rings [[[lat,lon],...]]; arrays are json_encoded on write',
                 'multiple' => 'JSON array of values',
                 'PREVIEW_PICTURE' => 'same file source as property type F',
@@ -153,7 +162,7 @@ final class IblockService
             ->setSelect(['ID', 'NAME', 'CODE', 'ACTIVE', 'IBLOCK_SECTION_ID', 'DEPTH_LEVEL', 'SORT'])
             ->setOrder(['LEFT_MARGIN' => 'ASC'])
             ->setLimit($this->config->resolveLimit($limit))
-            ->setOffset(max(0, $offset));
+            ->setOffset($this->config->resolveOffset($offset));
 
         $this->applyQueryFilter($query, $filter ?? []);
 
@@ -189,12 +198,14 @@ final class IblockService
         $this->whitelist->assertIblockAllowed($iblockId);
         $elementClass = $this->resolver->elementDataClass($iblockId);
 
-        $selectFields = $select ?? ['ID', 'NAME', 'CODE', 'ACTIVE', 'IBLOCK_SECTION_ID', 'TIMESTAMP_X'];
+        $selectFields = $select === null || $select === []
+            ? ['ID', 'NAME', 'CODE', 'ACTIVE', 'IBLOCK_SECTION_ID', 'TIMESTAMP_X']
+            : WhitelistGuard::sanitizeSelect($select);
         $query = $elementClass::query()
             ->setSelect($selectFields)
             ->setOrder(['ID' => 'DESC'])
             ->setLimit($this->config->resolveLimit($limit))
-            ->setOffset(max(0, $offset));
+            ->setOffset($this->config->resolveOffset($offset));
 
         $this->applyQueryFilter($query, $filter ?? []);
 
@@ -659,21 +670,84 @@ final class IblockService
     }
 
     /**
+     * @param array<string, mixed> $fields
+     * @return array{ID: string, NAME: string, SECTIONS: string, SORT: int}
+     */
+    public function addType(array $fields): array
+    {
+        $this->assertCreateEnabled();
+        $prepared = $this->prepareTypeFields($fields);
+        $lang = [];
+        $languages = \CLanguage::GetList();
+        while ($row = $languages->Fetch()) {
+            $lid = (string) $row['LID'];
+            $russian = $lid === 'ru';
+            $lang[$lid] = [
+                'NAME' => $prepared['NAME'],
+                'SECTION_NAME' => $russian ? 'Разделы' : 'Sections',
+                'ELEMENT_NAME' => $russian ? 'Элементы' : 'Elements',
+            ];
+        }
+        if ($lang === []) {
+            throw new RuntimeException('No installed languages. CIBlockType::Add requires LANG for each language.');
+        }
+
+        $type = new CIBlockType();
+        $id = $type->Add([
+            'ID' => $prepared['ID'],
+            'SECTIONS' => $prepared['SECTIONS'],
+            'IN_RSS' => 'N',
+            'SORT' => $prepared['SORT'],
+            'LANG' => $lang,
+        ]);
+        if ($id === false) {
+            throw new RuntimeException($this->classicError($type, 'CIBlockType::Add failed.'));
+        }
+
+        return [
+            'ID' => (string) $id,
+            'NAME' => $prepared['NAME'],
+            'SECTIONS' => $prepared['SECTIONS'],
+            'SORT' => $prepared['SORT'],
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $fields
+     * @return array{ID: int, IBLOCK_TYPE_ID: string, NAME: string, CODE: string, API_CODE: string, note: string}
+     */
+    public function addIblock(array $fields): array
+    {
+        $this->assertCreateEnabled();
+        $prepared = $this->prepareIblockFields($fields);
+        $prepared['GROUP_ID'] = $this->serviceGroupPermissions();
+        $iblock = new CIBlock();
+        $id = $iblock->Add($prepared);
+        if (!$id) {
+            throw new RuntimeException($this->classicError($iblock, 'CIBlock::Add failed.'));
+        }
+
+        return [
+            'ID' => (int) $id,
+            'IBLOCK_TYPE_ID' => $prepared['IBLOCK_TYPE_ID'],
+            'NAME' => $prepared['NAME'],
+            'CODE' => $prepared['CODE'],
+            'API_CODE' => $prepared['API_CODE'],
+            'note' => 'Add this ID to allowed_iblocks before element tools can use it.',
+        ];
+    }
+
+    /**
      * @param object $query Bitrix ORM query
      * @param array<string, mixed> $filter
      */
     private function applyQueryFilter(object $query, array $filter): void
     {
-        foreach ($filter as $field => $value) {
-            $field = preg_replace('/[^A-Za-z0-9_]/', '', (string) $field) ?? '';
-            if ($field === '') {
-                continue;
-            }
-            if (!method_exists($query, 'where')) {
-                break;
-            }
-            $query->where($field, $value);
+        if (!method_exists($query, 'setFilter')) {
+            return;
         }
+
+        $query->setFilter(WhitelistGuard::sanitizeFilter($filter));
     }
 
     /**
@@ -711,43 +785,6 @@ final class IblockService
         return new BitrixFileArray(new FileSource((string) ($_SERVER['DOCUMENT_ROOT'] ?? '')));
     }
 
-    /**
-     * @param array<string, mixed> $fields
-     */
-    private function applyElementFields(object $element, array $fields, bool $patch = false): void
-    {
-        $map = [
-            'NAME' => 'setName',
-            'CODE' => 'setCode',
-            'ACTIVE' => 'setActive',
-            'PREVIEW_TEXT' => 'setPreviewText',
-            'DETAIL_TEXT' => 'setDetailText',
-            'SORT' => 'setSort',
-            'IBLOCK_SECTION_ID' => 'setIblockSectionId',
-        ];
-
-        foreach ($map as $key => $method) {
-            if (!array_key_exists($key, $fields)) {
-                if (!$patch && $key === 'NAME') {
-                    throw new RuntimeException('Field NAME is required when creating an element.');
-                }
-                continue;
-            }
-
-            if (!method_exists($element, $method)) {
-                continue;
-            }
-
-            $value = $fields[$key];
-            if ($key === 'ACTIVE') {
-                $element->$method($value === 'Y' || $value === true || $value === 1 || $value === '1');
-                continue;
-            }
-
-            $element->$method($value);
-        }
-    }
-
     private function fieldToGetter(string $field): string
     {
         $parts = explode('_', strtolower($field));
@@ -771,5 +808,180 @@ final class IblockService
         }
 
         return implode('; ', $messages) ?: 'Bitrix operation failed.';
+    }
+
+    private function assertCreateEnabled(): void
+    {
+        if (!$this->config->iblockCreateEnabled()) {
+            throw new RuntimeException('Iblock creation is disabled in config.php (iblock_create_enabled).');
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $fields
+     * @return array{ID: string, NAME: string, SECTIONS: string, SORT: int}
+     */
+    private function prepareTypeFields(array $fields): array
+    {
+        $raw = $this->pickFields($fields, self::TYPE_FIELDS);
+        $id = trim((string) ($raw['ID'] ?? ''));
+        if (preg_match('/^[A-Za-z0-9_]{1,50}$/', $id) !== 1) {
+            throw new InvalidArgumentException('ID must be 1-50 chars of letters, digits, and underscore.');
+        }
+
+        return [
+            'ID' => $id,
+            'NAME' => $this->requiredText($raw['NAME'] ?? null, 'NAME', 100),
+            'SECTIONS' => $this->yn($raw['SECTIONS'] ?? 'Y', 'SECTIONS'),
+            'SORT' => $this->sortValue($raw['SORT'] ?? 500),
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $fields
+     * @return array{IBLOCK_TYPE_ID: string, NAME: string, CODE: string, API_CODE: string, ACTIVE: string, SORT: int, SITE_ID: list<string>, VERSION: int}
+     */
+    private function prepareIblockFields(array $fields): array
+    {
+        $raw = $this->pickFields($fields, self::IBLOCK_FIELDS);
+        $typeId = trim((string) ($raw['IBLOCK_TYPE_ID'] ?? ''));
+        if (preg_match('/^[A-Za-z0-9_]{1,50}$/', $typeId) !== 1) {
+            throw new InvalidArgumentException('IBLOCK_TYPE_ID must be 1-50 chars of letters, digits, and underscore.');
+        }
+
+        $code = trim((string) ($raw['CODE'] ?? ''));
+        if ($code === '' || mb_strlen($code) > 50) {
+            throw new InvalidArgumentException('CODE must be a non-empty string up to 50 characters.');
+        }
+
+        $apiCode = trim((string) ($raw['API_CODE'] ?? ''));
+        if (preg_match('/^[A-Za-z][A-Za-z0-9]{0,49}$/', $apiCode) !== 1) {
+            throw new InvalidArgumentException('API_CODE must be 1-50 letters and digits, starting with a letter.');
+        }
+
+        $lid = trim((string) ($raw['LID'] ?? $this->config->siteId()));
+        if (preg_match('/^[A-Za-z0-9_]{1,2}$/', $lid) !== 1) {
+            throw new InvalidArgumentException('LID must be a site id of 1-2 letters, digits, or underscore.');
+        }
+
+        return [
+            'IBLOCK_TYPE_ID' => $typeId,
+            'NAME' => $this->requiredText($raw['NAME'] ?? null, 'NAME', 255),
+            'CODE' => $code,
+            'API_CODE' => $apiCode,
+            'ACTIVE' => $this->yn($raw['ACTIVE'] ?? 'Y', 'ACTIVE'),
+            'SORT' => $this->sortValue($raw['SORT'] ?? 500),
+            'SITE_ID' => [$lid],
+            'VERSION' => 2,
+        ];
+    }
+
+    /**
+     * Write access for the service user's groups. Group 2 is every visitor, so it is used only when the user has no other group.
+     *
+     * @return array<int, string>
+     */
+    private function serviceGroupPermissions(): array
+    {
+        $groups = [];
+        foreach (\CUser::GetUserGroup($this->config->serviceUserId()) as $groupId) {
+            $id = (int) $groupId;
+            if ($id > 0) {
+                $groups[] = $id;
+            }
+        }
+
+        $perms = $this->groupPermissions($groups);
+        if ($perms === []) {
+            throw new RuntimeException('Service user has no groups. Cannot grant iblock access.');
+        }
+
+        return $perms;
+    }
+
+    /**
+     * @param list<int> $groupIds
+     * @return array<int, string>
+     */
+    private function groupPermissions(array $groupIds): array
+    {
+        $perms = [];
+        foreach ($groupIds as $groupId) {
+            if ($groupId === 1) {
+                $perms[1] = 'X';
+            } elseif ($groupId > 2) {
+                $perms[$groupId] = 'W';
+            }
+        }
+
+        if ($perms === [] && in_array(2, $groupIds, true)) {
+            $perms[2] = 'W';
+        }
+
+        return $perms;
+    }
+
+    /**
+     * @param array<string, mixed> $fields
+     * @param list<string> $allowed
+     * @return array<string, mixed>
+     */
+    private function pickFields(array $fields, array $allowed): array
+    {
+        if ($fields === []) {
+            throw new InvalidArgumentException('fields_json is empty.');
+        }
+
+        $raw = [];
+        foreach ($fields as $key => $value) {
+            $name = strtoupper((string) $key);
+            if (!in_array($name, $allowed, true)) {
+                throw new InvalidArgumentException('Field is not allowed: ' . $key);
+            }
+            $raw[$name] = $value;
+        }
+
+        return $raw;
+    }
+
+    private function requiredText(mixed $value, string $name, int $max): string
+    {
+        if (!is_scalar($value) || $value === null) {
+            throw new InvalidArgumentException($name . ' must be a string.');
+        }
+        $text = trim((string) $value);
+        if ($text === '' || mb_strlen($text) > $max) {
+            throw new InvalidArgumentException($name . ' must be a non-empty string up to ' . $max . ' characters.');
+        }
+
+        return $text;
+    }
+
+    private function yn(mixed $value, string $name): string
+    {
+        $flag = strtoupper(trim((string) $value));
+        if ($flag !== 'Y' && $flag !== 'N') {
+            throw new InvalidArgumentException($name . ' must be Y or N.');
+        }
+
+        return $flag;
+    }
+
+    private function sortValue(mixed $value): int
+    {
+        if (is_int($value) || (is_string($value) && preg_match('/^-?\d+$/', $value) === 1)) {
+            return (int) $value;
+        }
+
+        throw new InvalidArgumentException('SORT must be an integer.');
+    }
+
+    private function classicError(object $entity, string $fallback): string
+    {
+        $raw = trim((string) ($entity->LAST_ERROR ?? ''));
+        $text = trim(strip_tags(str_replace(['<br>', '<br/>', '<br />'], ' ', $raw)));
+        $text = preg_replace('/\s+/', ' ', $text) ?? $text;
+
+        return $text !== '' ? $text : $fallback;
     }
 }
