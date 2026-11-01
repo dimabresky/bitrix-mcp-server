@@ -8,10 +8,14 @@ use Bitrix\Highloadblock\HighloadBlockTable;
 use Bitrix\Main\UserFieldTable;
 use BitrixMcp\Config\Config;
 use BitrixMcp\Security\WhitelistGuard;
+use InvalidArgumentException;
 use RuntimeException;
 
 final class HighloadService
 {
+    /** @var list<string> */
+    private const HLBLOCK_FIELDS = ['NAME', 'TABLE_NAME'];
+
     public function __construct(
         private readonly Config $config,
         private readonly WhitelistGuard $whitelist,
@@ -204,6 +208,30 @@ final class HighloadService
 
     /**
      * @param array<string, mixed> $fields
+     * @return array{ID: int, NAME: string, TABLE_NAME: string, note: string}
+     */
+    public function addHlblock(array $fields): array
+    {
+        if (!$this->config->hlblockCreateEnabled()) {
+            throw new RuntimeException('HL block creation is disabled in config.php (hlblock_create_enabled).');
+        }
+
+        $prepared = $this->prepareHlblockFields($fields);
+        $result = HighloadBlockTable::add($prepared);
+        if (!$result->isSuccess()) {
+            throw new RuntimeException($this->formatErrors($result));
+        }
+
+        return [
+            'ID' => (int) $result->getId(),
+            'NAME' => $prepared['NAME'],
+            'TABLE_NAME' => $prepared['TABLE_NAME'],
+            'note' => 'Add this ID to allowed_hlblocks before record tools can use it.',
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $fields
      * @return array<string, mixed>
      */
     private function prepareFileFields(int $hlblockId, array $fields, BitrixFileArray $files): array
@@ -280,5 +308,43 @@ final class HighloadService
         }
 
         return implode('; ', $messages) ?: 'HL operation failed.';
+    }
+
+    /**
+     * @param array<string, mixed> $fields
+     * @return array{NAME: string, TABLE_NAME: string}
+     */
+    private function prepareHlblockFields(array $fields): array
+    {
+        if ($fields === []) {
+            throw new InvalidArgumentException('fields_json is empty.');
+        }
+
+        $raw = [];
+        foreach ($fields as $key => $value) {
+            $name = strtoupper((string) $key);
+            if (!in_array($name, self::HLBLOCK_FIELDS, true)) {
+                throw new InvalidArgumentException('Field is not allowed: ' . $key);
+            }
+            if (!is_scalar($value) || $value === null) {
+                throw new InvalidArgumentException($name . ' must be a string.');
+            }
+            $raw[$name] = trim((string) $value);
+        }
+
+        $entityName = $raw['NAME'] ?? '';
+        if (preg_match('/^[A-Z][A-Za-z0-9]{0,99}$/', $entityName) !== 1) {
+            throw new InvalidArgumentException('NAME must be 1-100 letters and digits, starting with an uppercase letter.');
+        }
+
+        $tableName = $raw['TABLE_NAME'] ?? '';
+        if (preg_match('/^[A-Za-z][A-Za-z0-9_]{0,63}$/', $tableName) !== 1) {
+            throw new InvalidArgumentException('TABLE_NAME must be 1-64 letters, digits, and underscore, starting with a letter.');
+        }
+
+        return [
+            'NAME' => $entityName,
+            'TABLE_NAME' => $tableName,
+        ];
     }
 }

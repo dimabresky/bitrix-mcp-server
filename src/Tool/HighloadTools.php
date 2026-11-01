@@ -95,6 +95,17 @@ final class HighloadTools extends AbstractToolHandler
         ));
     }
 
+    #[McpTool(
+        name: 'hlblock_add',
+        description: 'Create a highload block. Registered only when hlblock_create_enabled is true. fields_json: NAME (entity, leading uppercase letter), TABLE_NAME. The new ID is not added to allowed_hlblocks. Does not create UF fields.',
+    )]
+    public function hlblockAdd(string $fields_json): array
+    {
+        return $this->run('hlblock_add', [
+            'fields_json' => $fields_json,
+        ], fn () => $this->service->addHlblock($this->decodeJsonObject($fields_json)));
+    }
+
     #[McpTool(name: 'hlblock_record_delete', description: 'Delete HL record. confirm must be true.')]
     public function hlblockRecordDelete(int $hlblock_id, int $record_id, bool $confirm = false): array
     {

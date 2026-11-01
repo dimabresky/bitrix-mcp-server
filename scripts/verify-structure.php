@@ -89,6 +89,109 @@ if (!$usersOnly->usersEnabled() || $usersOnly->usersDeleteEnabled()) {
     $errors[] = 'users_enabled must not turn on user deletion';
 }
 
+$structureOff = new \BitrixMcp\Config\Config([]);
+if ($structureOff->iblockCreateEnabled() || $structureOff->hlblockCreateEnabled()) {
+    $errors[] = 'iblock_create_enabled and hlblock_create_enabled must default to false';
+}
+
+$iblockCreate = new \BitrixMcp\Config\Config(['iblock_create_enabled' => true, 'site_id' => 's1']);
+if (!$iblockCreate->iblockCreateEnabled() || $iblockCreate->hlblockCreateEnabled()) {
+    $errors[] = 'iblock_create_enabled must not turn on HL block creation';
+}
+
+$hlCreate = new \BitrixMcp\Config\Config(['hlblock_create_enabled' => true]);
+if ($hlCreate->iblockCreateEnabled() || !$hlCreate->hlblockCreateEnabled()) {
+    $errors[] = 'hlblock_create_enabled must not turn on iblock creation';
+}
+
+$iblockService = new \BitrixMcp\Service\IblockService(
+    $iblockCreate,
+    new \BitrixMcp\Security\WhitelistGuard($iblockCreate),
+    new \BitrixMcp\Service\IblockEntityResolver(),
+    new \BitrixMcp\Service\PropertyNormalizer(),
+);
+$prepareType = new ReflectionMethod(\BitrixMcp\Service\IblockService::class, 'prepareTypeFields');
+$prepareIblock = new ReflectionMethod(\BitrixMcp\Service\IblockService::class, 'prepareIblockFields');
+
+try {
+    $prepareType->invoke($iblockService, ['ID' => 'news', 'RIGHTS' => 'X']);
+    $errors[] = 'unknown iblock type field must be rejected';
+} catch (InvalidArgumentException $e) {
+    // expected
+}
+
+try {
+    $prepareType->invoke($iblockService, ['ID' => 'news', 'NAME' => '']);
+    $errors[] = 'empty iblock type NAME must be rejected';
+} catch (InvalidArgumentException $e) {
+    // expected
+}
+
+$type = $prepareType->invoke($iblockService, ['ID' => 'news', 'NAME' => 'Новости']);
+if (($type['SECTIONS'] ?? '') !== 'Y' || ($type['SORT'] ?? 0) !== 500) {
+    $errors[] = 'iblock type must default SECTIONS to Y and SORT to 500';
+}
+
+try {
+    $prepareIblock->invoke($iblockService, [
+        'IBLOCK_TYPE_ID' => 'news',
+        'NAME' => 'News',
+        'CODE' => 'news',
+        'VERSION' => 1,
+    ]);
+    $errors[] = 'VERSION must not be a caller field';
+} catch (InvalidArgumentException $e) {
+    // expected
+}
+
+try {
+    $prepareIblock->invoke($iblockService, [
+        'IBLOCK_TYPE_ID' => 'news',
+        'NAME' => 'News',
+        'CODE' => 'news',
+    ]);
+    $errors[] = 'iblock without API_CODE must be rejected';
+} catch (InvalidArgumentException $e) {
+    // expected
+}
+
+$iblock = $prepareIblock->invoke($iblockService, [
+    'IBLOCK_TYPE_ID' => 'news',
+    'NAME' => 'News',
+    'CODE' => 'news',
+    'API_CODE' => 'News',
+]);
+if (($iblock['VERSION'] ?? 0) !== 2 || ($iblock['LID'] ?? '') !== 's1' || ($iblock['ACTIVE'] ?? '') !== 'Y') {
+    $errors[] = 'iblock add must set VERSION 2, default LID from site_id, and ACTIVE Y';
+}
+
+$hlService = new \BitrixMcp\Service\HighloadService(
+    $hlCreate,
+    new \BitrixMcp\Security\WhitelistGuard($hlCreate),
+);
+$prepareHl = new ReflectionMethod(\BitrixMcp\Service\HighloadService::class, 'prepareHlblockFields');
+
+try {
+    $prepareHl->invoke($hlService, ['NAME' => 'color', 'TABLE_NAME' => 'hl_color']);
+    $errors[] = 'HL NAME must start with an uppercase letter';
+} catch (InvalidArgumentException $e) {
+    // expected
+}
+
+try {
+    $prepareHl->invoke($hlService, ['NAME' => 'Color', 'UF_XML_ID' => 'x']);
+    $errors[] = 'unknown HL field must be rejected';
+} catch (InvalidArgumentException $e) {
+    // expected
+}
+
+try {
+    $prepareHl->invoke($hlService, ['NAME' => 'Color']);
+    $errors[] = 'HL TABLE_NAME must be required';
+} catch (InvalidArgumentException $e) {
+    // expected
+}
+
 $userService = new \BitrixMcp\Service\UserService($usersOnly);
 $prepare = new ReflectionMethod(\BitrixMcp\Service\UserService::class, 'prepareFields');
 $added = $prepare->invoke($userService, [

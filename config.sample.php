@@ -28,6 +28,12 @@ return [
     // user_delete is registered only when users_enabled and this flag are both true.
     'users_delete_enabled' => false,
 
+    // iblock_type_add and iblock_add stay out of tools/list until this is true.
+    'iblock_create_enabled' => false,
+
+    // hlblock_add stays out of tools/list until this is true.
+    'hlblock_create_enabled' => false,
+
     // Default and maximum page size for list tools
     'max_list_limit' => 50,
 
