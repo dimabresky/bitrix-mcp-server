@@ -720,6 +720,7 @@ final class IblockService
     {
         $this->assertCreateEnabled();
         $prepared = $this->prepareIblockFields($fields);
+        $prepared['GROUP_ID'] = $this->serviceGroupPermissions();
         $iblock = new CIBlock();
         $id = $iblock->Add($prepared);
         if (!$id) {
@@ -838,7 +839,7 @@ final class IblockService
 
     /**
      * @param array<string, mixed> $fields
-     * @return array{IBLOCK_TYPE_ID: string, NAME: string, CODE: string, API_CODE: string, ACTIVE: string, SORT: int, LID: string, VERSION: int}
+     * @return array{IBLOCK_TYPE_ID: string, NAME: string, CODE: string, API_CODE: string, ACTIVE: string, SORT: int, SITE_ID: list<string>, VERSION: int}
      */
     private function prepareIblockFields(array $fields): array
     {
@@ -870,9 +871,54 @@ final class IblockService
             'API_CODE' => $apiCode,
             'ACTIVE' => $this->yn($raw['ACTIVE'] ?? 'Y', 'ACTIVE'),
             'SORT' => $this->sortValue($raw['SORT'] ?? 500),
-            'LID' => $lid,
+            'SITE_ID' => [$lid],
             'VERSION' => 2,
         ];
+    }
+
+    /**
+     * Write access for the service user's groups. Group 2 is every visitor, so it is used only when the user has no other group.
+     *
+     * @return array<int, string>
+     */
+    private function serviceGroupPermissions(): array
+    {
+        $groups = [];
+        foreach (\CUser::GetUserGroup($this->config->serviceUserId()) as $groupId) {
+            $id = (int) $groupId;
+            if ($id > 0) {
+                $groups[] = $id;
+            }
+        }
+
+        $perms = $this->groupPermissions($groups);
+        if ($perms === []) {
+            throw new RuntimeException('Service user has no groups. Cannot grant iblock access.');
+        }
+
+        return $perms;
+    }
+
+    /**
+     * @param list<int> $groupIds
+     * @return array<int, string>
+     */
+    private function groupPermissions(array $groupIds): array
+    {
+        $perms = [];
+        foreach ($groupIds as $groupId) {
+            if ($groupId === 1) {
+                $perms[1] = 'X';
+            } elseif ($groupId > 2) {
+                $perms[$groupId] = 'W';
+            }
+        }
+
+        if ($perms === [] && in_array(2, $groupIds, true)) {
+            $perms[2] = 'W';
+        }
+
+        return $perms;
     }
 
     /**

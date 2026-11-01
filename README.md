@@ -125,7 +125,7 @@ Endpoint будет доступен по адресу вида:
 | `iblock_element_update` | Частичное обновление полей и свойств |
 | `iblock_element_delete` | Требует `confirm: true` |
 | `iblock_type_add` | Тип инфоблока. Только при `iblock_create_enabled`. `fields_json`: `ID`, `NAME`, опционально `SECTIONS` (`Y`/`N`), `SORT` |
-| `iblock_add` | Инфоблок. Тот же флаг. `fields_json`: `IBLOCK_TYPE_ID`, `NAME`, `CODE`, `API_CODE`, опционально `ACTIVE`, `SORT`, `LID`. `VERSION` всегда `2`. Новый ID в `allowed_iblocks` сам не попадает |
+| `iblock_add` | Инфоблок. Тот же флаг. `fields_json`: `IBLOCK_TYPE_ID`, `NAME`, `CODE`, `API_CODE`, опционально `ACTIVE`, `SORT`, `LID`. `VERSION` всегда `2`, сайт передаётся как `SITE_ID`. Группам сервисного пользователя даётся `W` (админам `X`); группа 2 — только если других групп нет. Новый ID в `allowed_iblocks` сам не попадает |
 
 ### Highload-блоки
 
@@ -138,7 +138,7 @@ Endpoint будет доступен по адресу вида:
 | `hlblock_record_add` | `fields_json` с ключами `UF_*` |
 | `hlblock_record_update` | Частичное обновление записи |
 | `hlblock_record_delete` | Требует `confirm: true` |
-| `hlblock_add` | Хайлоадблок. Только при `hlblock_create_enabled`. `fields_json`: `NAME` (с заглавной латинской), `TABLE_NAME`. Новый ID в `allowed_hlblocks` сам не попадает. UF не создаются |
+| `hlblock_add` | Хайлоадблок. Только при `hlblock_create_enabled`. `fields_json`: `NAME` (с заглавной латинской, без суффикса `Table`), `TABLE_NAME` (строчные). Новый ID в `allowed_hlblocks` сам не попадает. UF не создаются |
 
 ### Пользователи
 

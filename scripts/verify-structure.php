@@ -161,8 +161,19 @@ $iblock = $prepareIblock->invoke($iblockService, [
     'CODE' => 'news',
     'API_CODE' => 'News',
 ]);
-if (($iblock['VERSION'] ?? 0) !== 2 || ($iblock['LID'] ?? '') !== 's1' || ($iblock['ACTIVE'] ?? '') !== 'Y') {
-    $errors[] = 'iblock add must set VERSION 2, default LID from site_id, and ACTIVE Y';
+if (
+    ($iblock['VERSION'] ?? 0) !== 2
+    || ($iblock['SITE_ID'] ?? []) !== ['s1']
+    || ($iblock['ACTIVE'] ?? '') !== 'Y'
+) {
+    $errors[] = 'iblock add must set VERSION 2, SITE_ID from site_id, and ACTIVE Y';
+}
+
+$groupPerms = new ReflectionMethod(\BitrixMcp\Service\IblockService::class, 'groupPermissions');
+$perms = $groupPerms->invoke($iblockService, [1, 2, 5]);
+$everyone = $groupPerms->invoke($iblockService, [2]);
+if ($perms !== [1 => 'X', 5 => 'W'] || $everyone !== [2 => 'W']) {
+    $errors[] = 'iblock permissions must grant the service groups and skip group 2 when another group exists';
 }
 
 $hlService = new \BitrixMcp\Service\HighloadService(
@@ -188,6 +199,20 @@ try {
 try {
     $prepareHl->invoke($hlService, ['NAME' => 'Color']);
     $errors[] = 'HL TABLE_NAME must be required';
+} catch (InvalidArgumentException $e) {
+    // expected
+}
+
+try {
+    $prepareHl->invoke($hlService, ['NAME' => 'ColorTable', 'TABLE_NAME' => 'hl_color']);
+    $errors[] = 'HL NAME ending with Table must be rejected';
+} catch (InvalidArgumentException $e) {
+    // expected
+}
+
+try {
+    $prepareHl->invoke($hlService, ['NAME' => 'Color', 'TABLE_NAME' => 'MyTable']);
+    $errors[] = 'HL TABLE_NAME must be lowercase';
 } catch (InvalidArgumentException $e) {
     // expected
 }

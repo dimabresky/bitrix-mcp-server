@@ -168,7 +168,7 @@ final class IblockTools extends AbstractToolHandler
 
     #[McpTool(
         name: 'iblock_add',
-        description: 'Create an infoblock. Registered only when iblock_create_enabled is true. fields_json: IBLOCK_TYPE_ID, NAME, CODE, API_CODE, optional ACTIVE, SORT, LID. VERSION is always 2. The new ID is not added to allowed_iblocks.',
+        description: 'Create an infoblock. Registered only when iblock_create_enabled is true. fields_json: IBLOCK_TYPE_ID, NAME, CODE, API_CODE, optional ACTIVE, SORT, LID. VERSION is always 2. SITE_ID is the site from LID or site_id. The service user groups get write access, except group 2 unless it is their only group. The new ID is not added to allowed_iblocks.',
     )]
     public function iblockAdd(string $fields_json): array
     {

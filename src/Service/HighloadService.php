@@ -333,13 +333,13 @@ final class HighloadService
         }
 
         $entityName = $raw['NAME'] ?? '';
-        if (preg_match('/^[A-Z][A-Za-z0-9]{0,99}$/', $entityName) !== 1) {
-            throw new InvalidArgumentException('NAME must be 1-100 letters and digits, starting with an uppercase letter.');
+        if (preg_match('/^[A-Z][A-Za-z0-9]{0,99}$/', $entityName) !== 1 || str_ends_with($entityName, 'Table')) {
+            throw new InvalidArgumentException('NAME must be 1-100 letters and digits, start with an uppercase letter, and must not end with Table.');
         }
 
         $tableName = $raw['TABLE_NAME'] ?? '';
-        if (preg_match('/^[A-Za-z][A-Za-z0-9_]{0,63}$/', $tableName) !== 1) {
-            throw new InvalidArgumentException('TABLE_NAME must be 1-64 letters, digits, and underscore, starting with a letter.');
+        if (preg_match('/^[a-z][a-z0-9_]{0,63}$/', $tableName) !== 1) {
+            throw new InvalidArgumentException('TABLE_NAME must be 1-64 lowercase letters, digits, and underscore, starting with a letter.');
         }
 
         return [

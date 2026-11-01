@@ -97,7 +97,7 @@ final class HighloadTools extends AbstractToolHandler
 
     #[McpTool(
         name: 'hlblock_add',
-        description: 'Create a highload block. Registered only when hlblock_create_enabled is true. fields_json: NAME (entity, leading uppercase letter), TABLE_NAME. The new ID is not added to allowed_hlblocks. Does not create UF fields.',
+        description: 'Create a highload block. Registered only when hlblock_create_enabled is true. fields_json: NAME (entity, leading uppercase letter, must not end with Table), TABLE_NAME (lowercase). The new ID is not added to allowed_hlblocks. Does not create UF fields.',
     )]
     public function hlblockAdd(string $fields_json): array
     {
