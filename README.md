@@ -27,7 +27,7 @@ public/index.php
 2. **Авторизация MCP** — заголовок `Authorization: Bearer …` (или `X-MCP-Token` для отладки). Токен сверяется с `auth_token` в `config.php`.
 3. **Bitrix** поднимается через `prolog_before.php`; все операции выполняются от имени `service_user_id`.
 4. **MCP-сессии** (initialize, tools/list, tools/call) хранятся в файловом хранилище `session_store_path` — это часть Streamable HTTP, не отдельный процесс.
-5. **Whitelist** — tools работают только с ID из `allowed_iblocks` / `allowed_hlblocks`. Tools пользователей нет в `tools/list`, пока `users_enabled` не `true`; `user_delete` — только если дополнительно `users_delete_enabled`.
+5. **Whitelist** — tools данных работают только с ID из `allowed_iblocks` / `allowed_hlblocks`. `iblock_type_add` и `iblock_add` есть в `tools/list`, только если `iblock_create_enabled`. `hlblock_add` — только если `hlblock_create_enabled`. Tools пользователей нет, пока `users_enabled` не `true`; `user_delete` — только если дополнительно `users_delete_enabled`.
 6. **Аудит** — каждый вызов tool пишется в `audit_log_path`.
 
 Legacy-режим через `server.php` и stdio **удалён**. Если файл `server.php` есть в каталоге — его нужно убрать.
@@ -71,6 +71,8 @@ Endpoint будет доступен по адресу вида:
 | `allowed_hlblocks` | Массив ID highload-блоков |
 | `users_enabled` | `true` регистрирует tools пользователей. По умолчанию `false` — tools не появляются |
 | `users_delete_enabled` | `true` регистрирует `user_delete`. Работает только вместе с `users_enabled`. По умолчанию `false` |
+| `iblock_create_enabled` | `true` регистрирует `iblock_type_add` и `iblock_add` вместе. По умолчанию `false`. Сервисному пользователю нужно право создавать инфоблоки |
+| `hlblock_create_enabled` | `true` регистрирует `hlblock_add`. По умолчанию `false`. Сервисному пользователю нужно право создавать HL-блоки |
 | `max_list_limit` | Лимит записей в list-tools (фактический максимум — **100**) |
 | `audit_log_path` | Путь к файлу аудита (например `logs/audit.log`) |
 | `session_store_path` | Каталог MCP HTTP-сессий (writable) |
@@ -122,6 +124,8 @@ Endpoint будет доступен по адресу вида:
 | `iblock_element_add` | `fields_json`, `properties_json` |
 | `iblock_element_update` | Частичное обновление полей и свойств |
 | `iblock_element_delete` | Требует `confirm: true` |
+| `iblock_type_add` | Тип инфоблока. Только при `iblock_create_enabled`. `fields_json`: `ID`, `NAME`, опционально `SECTIONS` (`Y`/`N`), `SORT` |
+| `iblock_add` | Инфоблок. Тот же флаг. `fields_json`: `IBLOCK_TYPE_ID`, `NAME`, `CODE`, `API_CODE`, опционально `ACTIVE`, `SORT`, `LID`. `VERSION` всегда `2`, сайт передаётся как `SITE_ID`. Группам сервисного пользователя даётся `W` (админам `X`); группа 2 — только если других групп нет. Новый ID в `allowed_iblocks` сам не попадает |
 
 ### Highload-блоки
 
@@ -134,6 +138,7 @@ Endpoint будет доступен по адресу вида:
 | `hlblock_record_add` | `fields_json` с ключами `UF_*` |
 | `hlblock_record_update` | Частичное обновление записи |
 | `hlblock_record_delete` | Требует `confirm: true` |
+| `hlblock_add` | Хайлоадблок. Только при `hlblock_create_enabled`. `fields_json`: `NAME` (с заглавной латинской, без суффикса `Table`), `TABLE_NAME` (строчные). Новый ID в `allowed_hlblocks` сам не попадает. UF не создаются |
 
 ### Пользователи
 
@@ -163,7 +168,7 @@ Endpoint будет доступен по адресу вида:
 
 Файлы пишутся значением: `PREVIEW_PICTURE` / `DETAIL_PICTURE`, свойство типа `F`, UF с типом `file`.
 
-Для HL: запись `UF_*` в записях поддерживается; изменение структуры HL-блока — нет.
+Для HL: запись `UF_*` в записях поддерживается. Сам блок создаётся через `hlblock_add`, когда включён `hlblock_create_enabled`. Поля UF по-прежнему не создаются и не меняются.
 
 ## Форматы значений свойств (запись)
 

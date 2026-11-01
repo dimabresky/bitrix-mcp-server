@@ -26,6 +26,7 @@ Do **not** copy patterns from customer projects (testmile, etc.). Use only:
 - Auth: `Authorization: Bearer <auth_token>` from config.php
 - Write operations: whitelist + service user `Authorize()` + audit log
 - Users are optional: `users_enabled` registers list/get/add/update/group_list; `users_delete_enabled` (only with the first flag) registers `user_delete`. Reads use `UserTable` / `GroupTable` / `UserGroupTable`; writes use `CUser`. Never return or audit `PASSWORD` / `CHECKWORD`
+- Structure create is optional and off by default. `iblock_create_enabled` registers both `iblock_type_add` and `iblock_add` (`CIBlockType::Add` writes `LANG` for every installed language; `CIBlock::Add` stores `VERSION` 2 and `SITE_ID` as a one-element array, and grants `W` to the service user's groups except group 2 unless it is their only group). `hlblock_create_enabled` registers `hlblock_add` (`HighloadBlockTable::add`). New IDs stay out of `allowed_iblocks` / `allowed_hlblocks`. No section create and no UF create
 
 ## Stack
 
