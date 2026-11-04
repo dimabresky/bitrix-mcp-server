@@ -124,6 +124,7 @@ Endpoint будет доступен по адресу вида:
 | `iblock_element_add` | `fields_json`, `properties_json` |
 | `iblock_element_update` | Частичное обновление полей и свойств |
 | `iblock_element_delete` | Требует `confirm: true` |
+| `iblock_property_add` | Свойство у инфоблока из whitelist. `fields_json`: `NAME`, `CODE`, `PROPERTY_TYPE` (`S`, `N`, `L`, `F`, `E`, `G`), опционально `MULTIPLE`, `IS_REQUIRED`, `SORT`. Для `E` и `G` обязателен `LINK_IBLOCK_ID`. Для `L` обязателен `VALUES`: `[{VALUE, XML_ID?, SORT?, DEF?}]`. Изменение, удаление и правка enum после создания не поддерживаются |
 | `iblock_type_add` | Тип инфоблока. Только при `iblock_create_enabled`. `fields_json`: `ID`, `NAME`, опционально `SECTIONS` (`Y`/`N`), `SORT` |
 | `iblock_add` | Инфоблок. Тот же флаг. `fields_json`: `IBLOCK_TYPE_ID`, `NAME`, `CODE`, `API_CODE`, опционально `ACTIVE`, `SORT`, `LID`. `VERSION` всегда `2`, сайт передаётся как `SITE_ID`. Группам сервисного пользователя даётся `W` (админам `X`); группа 2 — только если других групп нет. Новый ID в `allowed_iblocks` сам не попадает |
 
@@ -160,11 +161,12 @@ Endpoint будет доступен по адресу вида:
 | Уровень | Что это | Статус |
 |---------|---------|--------|
 | **Значения свойств на элементах** | `properties_json` в add/update, `PROPERTIES` в get | Поддерживается |
-| **Определения свойств** | `CIBlockProperty`, `CIBlockPropertyEnum` | **Не поддерживается** |
+| **Создание свойства** | `iblock_property_add` (`CIBlockProperty::Add`) на инфоблоке из whitelist | Поддерживается |
+| **Изменение свойства** | `CIBlockProperty::Update/Delete`, правка enum после создания | **Не поддерживается** |
 
-Что **можно**: `iblock_schema` (чтение), запись значений через `iblock_element_*`.
+Что **можно**: `iblock_schema` (чтение), `iblock_property_add`, запись значений через `iblock_element_*`.
 
-Чего **нет**: `iblock_property_*`, управление enum.
+Чего **нет**: изменение и удаление свойств, правка enum после создания.
 
 Файлы пишутся значением: `PREVIEW_PICTURE` / `DETAIL_PICTURE`, свойство типа `F`, UF с типом `file`.
 
@@ -217,6 +219,15 @@ Endpoint будет доступен по адресу вида:
 {
   "iblock_id": 16,
   "section_id": 6294
+}
+```
+
+**Создание свойства:**
+
+```json
+{
+  "iblock_id": 5,
+  "fields_json": "{\"NAME\":\"Автор\",\"CODE\":\"AUTHOR\",\"PROPERTY_TYPE\":\"S\"}"
 }
 ```
 

@@ -54,6 +54,7 @@ final class McpServerFactory
             ->addTool(\Closure::fromCallable([$iblockTools, 'iblockElementAdd']), 'iblock_element_add')
             ->addTool(\Closure::fromCallable([$iblockTools, 'iblockElementUpdate']), 'iblock_element_update')
             ->addTool(\Closure::fromCallable([$iblockTools, 'iblockElementDelete']), 'iblock_element_delete')
+            ->addTool(\Closure::fromCallable([$iblockTools, 'iblockPropertyAdd']), 'iblock_property_add')
             ->addTool(\Closure::fromCallable([$hlTools, 'hlblockList']), 'hlblock_list')
             ->addTool(\Closure::fromCallable([$hlTools, 'hlblockSchema']), 'hlblock_schema')
             ->addTool(\Closure::fromCallable([$hlTools, 'hlblockRecordsList']), 'hlblock_records_list')
