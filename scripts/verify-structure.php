@@ -176,6 +176,119 @@ if ($perms !== [1 => 'X', 5 => 'W'] || $everyone !== [2 => 'W']) {
     $errors[] = 'iblock permissions must grant the service groups and skip group 2 when another group exists';
 }
 
+$prepareProperty = new ReflectionMethod(\BitrixMcp\Service\IblockService::class, 'preparePropertyFields');
+
+try {
+    $prepareProperty->invoke($iblockService, ['NAME' => 'Author', 'CODE' => 'AUTHOR', 'USER_TYPE' => 'HTML']);
+    $errors[] = 'unknown property field must be rejected';
+} catch (InvalidArgumentException $e) {
+    // expected
+}
+
+try {
+    $prepareProperty->invoke($iblockService, ['NAME' => '', 'CODE' => 'AUTHOR', 'PROPERTY_TYPE' => 'S']);
+    $errors[] = 'empty property NAME must be rejected';
+} catch (InvalidArgumentException $e) {
+    // expected
+}
+
+try {
+    $prepareProperty->invoke($iblockService, ['NAME' => 'Author', 'CODE' => '1AUTHOR', 'PROPERTY_TYPE' => 'S']);
+    $errors[] = 'property CODE starting with a digit must be rejected';
+} catch (InvalidArgumentException $e) {
+    // expected
+}
+
+try {
+    $prepareProperty->invoke($iblockService, ['NAME' => 'Author', 'CODE' => 'AUTHOR', 'PROPERTY_TYPE' => 'X']);
+    $errors[] = 'unknown PROPERTY_TYPE must be rejected';
+} catch (InvalidArgumentException $e) {
+    // expected
+}
+
+try {
+    $prepareProperty->invoke($iblockService, [
+        'NAME' => 'Author',
+        'CODE' => 'AUTHOR',
+        'PROPERTY_TYPE' => 'S',
+        'LINK_IBLOCK_ID' => 1,
+    ]);
+    $errors[] = 'LINK_IBLOCK_ID must be rejected for PROPERTY_TYPE S';
+} catch (InvalidArgumentException $e) {
+    // expected
+}
+
+try {
+    $prepareProperty->invoke($iblockService, ['NAME' => 'Link', 'CODE' => 'LINK', 'PROPERTY_TYPE' => 'E']);
+    $errors[] = 'LINK_IBLOCK_ID must be required for PROPERTY_TYPE E';
+} catch (InvalidArgumentException $e) {
+    // expected
+}
+
+try {
+    $prepareProperty->invoke($iblockService, ['NAME' => 'Color', 'CODE' => 'COLOR', 'PROPERTY_TYPE' => 'L']);
+    $errors[] = 'VALUES must be required for PROPERTY_TYPE L';
+} catch (InvalidArgumentException $e) {
+    // expected
+}
+
+try {
+    $prepareProperty->invoke($iblockService, [
+        'NAME' => 'Author',
+        'CODE' => 'AUTHOR',
+        'PROPERTY_TYPE' => 'S',
+        'VALUES' => [['VALUE' => 'Red']],
+    ]);
+    $errors[] = 'VALUES must be rejected for PROPERTY_TYPE S';
+} catch (InvalidArgumentException $e) {
+    // expected
+}
+
+$stringProperty = $prepareProperty->invoke($iblockService, [
+    'NAME' => 'Author',
+    'CODE' => 'AUTHOR',
+    'PROPERTY_TYPE' => 's',
+]);
+if (
+    ($stringProperty['PROPERTY_TYPE'] ?? '') !== 'S'
+    || ($stringProperty['MULTIPLE'] ?? '') !== 'N'
+    || ($stringProperty['IS_REQUIRED'] ?? '') !== 'N'
+    || ($stringProperty['SORT'] ?? 0) !== 500
+    || ($stringProperty['ACTIVE'] ?? '') !== 'Y'
+    || isset($stringProperty['LINK_IBLOCK_ID'])
+    || isset($stringProperty['VALUES'])
+) {
+    $errors[] = 'string property must default MULTIPLE N, IS_REQUIRED N, SORT 500, ACTIVE Y';
+}
+
+$listProperty = $prepareProperty->invoke($iblockService, [
+    'NAME' => 'Color',
+    'CODE' => 'COLOR',
+    'PROPERTY_TYPE' => 'L',
+    'VALUES' => [
+        ['VALUE' => 'Red', 'XML_ID' => 'red', 'SORT' => 100, 'DEF' => 'Y'],
+    ],
+]);
+$enum = $listProperty['VALUES'][0] ?? [];
+if (
+    ($enum['VALUE'] ?? '') !== 'Red'
+    || ($enum['XML_ID'] ?? '') !== 'red'
+    || ($enum['SORT'] ?? 0) !== 100
+    || ($enum['DEF'] ?? '') !== 'Y'
+) {
+    $errors[] = 'list property must keep enum VALUE, XML_ID, SORT, and DEF';
+}
+
+$linkProperty = $prepareProperty->invoke($iblockService, [
+    'NAME' => 'Link',
+    'CODE' => 'LINK',
+    'PROPERTY_TYPE' => 'G',
+    'LINK_IBLOCK_ID' => '4',
+]);
+if (($linkProperty['LINK_IBLOCK_ID'] ?? 0) !== 4) {
+    $errors[] = 'section link property must keep LINK_IBLOCK_ID';
+}
+
 $hlService = new \BitrixMcp\Service\HighloadService(
     $hlCreate,
     new \BitrixMcp\Security\WhitelistGuard($hlCreate),

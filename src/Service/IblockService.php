@@ -11,6 +11,7 @@ use BitrixMcp\Config\Config;
 use BitrixMcp\Security\WhitelistGuard;
 use CIBlock;
 use CIBlockElement;
+use CIBlockProperty;
 use CIBlockSectionPropertyLink;
 use CIBlockType;
 use InvalidArgumentException;
@@ -32,6 +33,17 @@ final class IblockService
 
     /** @var list<string> */
     private const IBLOCK_FIELDS = ['IBLOCK_TYPE_ID', 'NAME', 'CODE', 'API_CODE', 'ACTIVE', 'SORT', 'LID'];
+
+    /** @var list<string> */
+    private const PROPERTY_FIELDS = [
+        'NAME', 'CODE', 'PROPERTY_TYPE', 'MULTIPLE', 'IS_REQUIRED', 'SORT', 'LINK_IBLOCK_ID', 'VALUES',
+    ];
+
+    /** @var list<string> */
+    private const PROPERTY_TYPES = ['S', 'N', 'L', 'F', 'E', 'G'];
+
+    /** @var list<string> */
+    private const ENUM_FIELDS = ['VALUE', 'XML_ID', 'SORT', 'DEF'];
     public function __construct(
         private readonly Config $config,
         private readonly WhitelistGuard $whitelist,
@@ -142,9 +154,9 @@ final class IblockService
                 'PREVIEW_PICTURE' => 'same file source as property type F',
             ],
             'limitations' => [
-                'property_definition_crud' => false,
+                'property_definition_crud' => 'add',
                 'property_enum_crud' => false,
-                'note' => 'Схема свойств только для чтения. Создание/изменение/удаление свойств инфоблока (CIBlockProperty) не поддерживается. Значения свойств на элементах — через iblock_element_add/update. Файлы передаются объектом path, url или name+content_base64.',
+                'note' => 'Создание свойства — iblock_property_add. Изменение и удаление свойств и правка enum после создания не поддерживаются. Значения свойств на элементах — через iblock_element_add/update. Файлы передаются объектом path, url или name+content_base64.',
             ],
         ];
     }
@@ -671,6 +683,34 @@ final class IblockService
 
     /**
      * @param array<string, mixed> $fields
+     * @return array<string, mixed>
+     */
+    public function addProperty(int $iblockId, array $fields): array
+    {
+        $this->whitelist->assertIblockAllowed($iblockId);
+        $prepared = $this->preparePropertyFields($fields);
+        $prepared['IBLOCK_ID'] = $iblockId;
+
+        $property = new CIBlockProperty();
+        $id = $property->Add($prepared);
+        if (!$id) {
+            throw new RuntimeException($this->classicError($property, 'CIBlockProperty::Add failed.'));
+        }
+
+        return $this->mapPropertyDefinition([
+            'ID' => (int) $id,
+            'CODE' => $prepared['CODE'],
+            'NAME' => $prepared['NAME'],
+            'PROPERTY_TYPE' => $prepared['PROPERTY_TYPE'],
+            'MULTIPLE' => $prepared['MULTIPLE'],
+            'IS_REQUIRED' => $prepared['IS_REQUIRED'],
+            'USER_TYPE' => '',
+            'LINK_IBLOCK_ID' => $prepared['LINK_IBLOCK_ID'] ?? 0,
+        ], $prepared['PROPERTY_TYPE'] === 'L');
+    }
+
+    /**
+     * @param array<string, mixed> $fields
      * @return array{ID: string, NAME: string, SECTIONS: string, SORT: int}
      */
     public function addType(array $fields): array
@@ -919,6 +959,100 @@ final class IblockService
         }
 
         return $perms;
+    }
+
+    /**
+     * @param array<string, mixed> $fields
+     * @return array<string, mixed>
+     */
+    private function preparePropertyFields(array $fields): array
+    {
+        $raw = $this->pickFields($fields, self::PROPERTY_FIELDS);
+        $type = strtoupper(trim((string) ($raw['PROPERTY_TYPE'] ?? '')));
+        if (!in_array($type, self::PROPERTY_TYPES, true)) {
+            throw new InvalidArgumentException('PROPERTY_TYPE must be S, N, L, F, E, or G.');
+        }
+
+        $code = trim((string) ($raw['CODE'] ?? ''));
+        if (preg_match('/^[A-Za-z][A-Za-z0-9_]{0,49}$/', $code) !== 1) {
+            throw new InvalidArgumentException('CODE must be 1-50 letters, digits, and underscore, starting with a letter.');
+        }
+
+        $linked = $type === 'E' || $type === 'G';
+        if ($linked && !array_key_exists('LINK_IBLOCK_ID', $raw)) {
+            throw new InvalidArgumentException('LINK_IBLOCK_ID is required for PROPERTY_TYPE ' . $type . '.');
+        }
+        if (!$linked && array_key_exists('LINK_IBLOCK_ID', $raw)) {
+            throw new InvalidArgumentException('LINK_IBLOCK_ID is only allowed for PROPERTY_TYPE E or G.');
+        }
+        if ($type === 'L' && !array_key_exists('VALUES', $raw)) {
+            throw new InvalidArgumentException('VALUES is required for PROPERTY_TYPE L.');
+        }
+        if ($type !== 'L' && array_key_exists('VALUES', $raw)) {
+            throw new InvalidArgumentException('VALUES is only allowed for PROPERTY_TYPE L.');
+        }
+
+        $prepared = [
+            'NAME' => $this->requiredText($raw['NAME'] ?? null, 'NAME', 255),
+            'CODE' => $code,
+            'PROPERTY_TYPE' => $type,
+            'MULTIPLE' => $this->yn($raw['MULTIPLE'] ?? 'N', 'MULTIPLE'),
+            'IS_REQUIRED' => $this->yn($raw['IS_REQUIRED'] ?? 'N', 'IS_REQUIRED'),
+            'SORT' => $this->sortValue($raw['SORT'] ?? 500),
+            'ACTIVE' => 'Y',
+        ];
+        if ($linked) {
+            $prepared['LINK_IBLOCK_ID'] = $this->positiveInt($raw['LINK_IBLOCK_ID'], 'LINK_IBLOCK_ID');
+        }
+        if ($type === 'L') {
+            $prepared['VALUES'] = $this->prepareEnumValues($raw['VALUES']);
+        }
+
+        return $prepared;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function prepareEnumValues(mixed $values): array
+    {
+        if (!is_array($values) || !array_is_list($values) || $values === []) {
+            throw new InvalidArgumentException('VALUES must be a non-empty array of enum items.');
+        }
+
+        $out = [];
+        foreach ($values as $item) {
+            if (!is_array($item)) {
+                throw new InvalidArgumentException('VALUES item must be an object.');
+            }
+            $raw = $this->pickFields($item, self::ENUM_FIELDS);
+            $row = ['VALUE' => $this->requiredText($raw['VALUE'] ?? null, 'VALUE', 255)];
+            if (array_key_exists('XML_ID', $raw)) {
+                $xmlId = trim((string) $raw['XML_ID']);
+                if ($xmlId === '' || mb_strlen($xmlId) > 200) {
+                    throw new InvalidArgumentException('XML_ID must be a non-empty string up to 200 characters.');
+                }
+                $row['XML_ID'] = $xmlId;
+            }
+            if (array_key_exists('SORT', $raw)) {
+                $row['SORT'] = $this->sortValue($raw['SORT']);
+            }
+            if (array_key_exists('DEF', $raw)) {
+                $row['DEF'] = $this->yn($raw['DEF'], 'DEF');
+            }
+            $out[] = $row;
+        }
+
+        return $out;
+    }
+
+    private function positiveInt(mixed $value, string $name): int
+    {
+        if (is_int($value) || (is_string($value) && preg_match('/^[1-9]\d*$/', $value) === 1)) {
+            return (int) $value;
+        }
+
+        throw new InvalidArgumentException($name . ' must be a positive integer.');
     }
 
     /**

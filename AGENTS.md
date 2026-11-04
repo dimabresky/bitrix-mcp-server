@@ -18,8 +18,8 @@ Do **not** copy patterns from customer projects (testmile, etc.). Use only:
 ## Implementation rules
 
 - Infoblock **data** CRUD: D7 ORM (`IblockTable::compileEntity`, `Element{ApiCode}Table`, `Section::compileEntityByIblock`)
-- Classic API only where docs require: `CIBlockElement::UpdateSearch`, `CIBlockSection::Delete`, file properties on elements (v2)
-- **Property definition CRUD is out of scope v1:** no `CIBlockProperty::Add/Update/Delete`, no `CIBlockPropertyEnum` management, no `iblock_property_*` tools. Do not suggest these without a separate task. Property **values** on elements only via `iblock_element_add` / `iblock_element_update` (ORM `set` / `addTo`)
+- Classic API only where docs require: `CIBlockElement::UpdateSearch`, `CIBlockSection::Delete`, file properties on elements (v2), `CIBlockProperty::Add` for `iblock_property_add`
+- Property definition **update/delete** and enum edits after create are out of scope: no `CIBlockProperty::Update/Delete`, no `CIBlockPropertyEnum` management. Create only via `iblock_property_add` on a whitelisted iblock. Property **values** on elements via `iblock_element_add` / `iblock_element_update`
 - HL records: `HighloadBlockTable::compileEntity` + data class `getList` / `add` / `update` / `delete`
 - Iblocks without `API_CODE` must return a clear error, not silent legacy fallback
 - HTTP: never write to the response body except valid MCP JSON; PHP errors/warnings → `error_log`, not output

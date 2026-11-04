@@ -27,7 +27,7 @@ final class IblockTools extends AbstractToolHandler
         ]);
     }
 
-    #[McpTool(name: 'iblock_schema', description: 'Read-only iblock schema: fields, property definitions, enum values. No property add/update/delete (CIBlockProperty). Requires API_CODE.')]
+    #[McpTool(name: 'iblock_schema', description: 'Iblock schema: fields, property definitions, enum values. Create properties with iblock_property_add. No property update/delete and no enum edits after create. Requires API_CODE.')]
     public function iblockSchema(int $iblock_id): array
     {
         return $this->run('iblock_schema', ['iblock_id' => $iblock_id], fn () => $this->service->getSchema($iblock_id));
@@ -153,6 +153,18 @@ final class IblockTools extends AbstractToolHandler
             $this->decodeJsonObject($fields_json),
             $this->decodeJsonObject($properties_json)
         ));
+    }
+
+    #[McpTool(
+        name: 'iblock_property_add',
+        description: 'Create a property on a whitelisted iblock. fields_json: NAME, CODE, PROPERTY_TYPE (S, N, L, F, E, G), optional MULTIPLE, IS_REQUIRED, SORT. E and G require LINK_IBLOCK_ID. L requires VALUES: [{VALUE, XML_ID?, SORT?, DEF?}]. Does not update or delete properties, and does not change enum values later.',
+    )]
+    public function iblockPropertyAdd(int $iblock_id, string $fields_json): array
+    {
+        return $this->run('iblock_property_add', [
+            'iblock_id' => $iblock_id,
+            'fields_json' => $fields_json,
+        ], fn () => $this->service->addProperty($iblock_id, $this->decodeJsonObject($fields_json)));
     }
 
     #[McpTool(
