@@ -353,6 +353,15 @@ try {
     // expected
 }
 
+$dept = $prepare->invoke($userService, ['UF_DEPARTMENT' => 544], false);
+if (($dept['UF_DEPARTMENT'] ?? null) !== 544) {
+    $errors[] = 'UF_DEPARTMENT must be kept as a non-negative integer';
+}
+$cleared = $prepare->invoke($userService, ['UF_DEPARTMENT' => ''], false);
+if (($cleared['UF_DEPARTMENT'] ?? null) !== 0) {
+    $errors[] = 'empty UF_DEPARTMENT must become 0';
+}
+
 $updated = $prepare->invoke($userService, ['PASSWORD' => 'x'], false);
 if (($updated['CONFIRM_PASSWORD'] ?? '') !== 'x') {
     $errors[] = 'PASSWORD-only update must copy CONFIRM_PASSWORD';

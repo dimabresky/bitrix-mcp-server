@@ -25,6 +25,7 @@ final class UserService
         'WORK_PHONE',
         'PERSONAL_MOBILE',
         'XML_ID',
+        'WORK_DEPARTMENT',
     ];
 
     private const FILTER_FIELDS = [
@@ -55,6 +56,7 @@ final class UserService
         'PASSWORD',
         'CONFIRM_PASSWORD',
         'GROUP_ID',
+        'UF_DEPARTMENT',
     ];
 
     public function __construct(
@@ -72,7 +74,7 @@ final class UserService
 
         $rows = UserTable::getList([
             'filter' => $this->sanitizeFilter($filter),
-            'select' => self::PUBLIC_FIELDS,
+            'select' => $this->selectFields(),
             'order' => ['ID' => 'DESC'],
             'limit' => $this->config->resolveLimit($limit),
             'offset' => $this->config->resolveOffset($offset),
@@ -96,7 +98,7 @@ final class UserService
 
         $row = UserTable::getList([
             'filter' => ['=ID' => $userId],
-            'select' => self::PUBLIC_FIELDS,
+            'select' => $this->selectFields(),
             'limit' => 1,
         ])->fetch();
 
@@ -298,6 +300,11 @@ final class UserService
                 continue;
             }
 
+            if ($name === 'UF_DEPARTMENT') {
+                $prepared['UF_DEPARTMENT'] = $this->departmentId($value);
+                continue;
+            }
+
             if ($name === 'ACTIVE') {
                 $active = strtoupper(trim((string) $value));
                 if ($active !== 'Y' && $active !== 'N') {
@@ -379,13 +386,45 @@ final class UserService
         return array_values(array_unique($ids));
     }
 
+    private function departmentId(mixed $value): int
+    {
+        if ($value === '' || $value === null) {
+            return 0;
+        }
+        if (is_int($value)) {
+            $id = $value;
+        } elseif (is_string($value) && preg_match('/^\d+$/', $value) === 1) {
+            $id = (int) $value;
+        } else {
+            throw new InvalidArgumentException('UF_DEPARTMENT must be a non-negative integer.');
+        }
+        if ($id < 0) {
+            throw new InvalidArgumentException('UF_DEPARTMENT must be a non-negative integer.');
+        }
+
+        return $id;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function selectFields(): array
+    {
+        $select = self::PUBLIC_FIELDS;
+        if (UserTable::getEntity()->hasField('UF_DEPARTMENT')) {
+            $select[] = 'UF_DEPARTMENT';
+        }
+
+        return $select;
+    }
+
     /**
      * @param array<string, mixed> $row
      * @return array<string, mixed>
      */
     private function mapUser(array $row): array
     {
-        return [
+        $mapped = [
             'ID' => (int) $row['ID'],
             'LOGIN' => (string) ($row['LOGIN'] ?? ''),
             'EMAIL' => (string) ($row['EMAIL'] ?? ''),
@@ -397,6 +436,31 @@ final class UserService
             'WORK_PHONE' => (string) ($row['WORK_PHONE'] ?? ''),
             'PERSONAL_MOBILE' => (string) ($row['PERSONAL_MOBILE'] ?? ''),
             'XML_ID' => (string) ($row['XML_ID'] ?? ''),
+            'WORK_DEPARTMENT' => (string) ($row['WORK_DEPARTMENT'] ?? ''),
         ];
+        if (array_key_exists('UF_DEPARTMENT', $row)) {
+            $mapped['UF_DEPARTMENT'] = $this->departmentIdFromRow($row['UF_DEPARTMENT']);
+        }
+
+        return $mapped;
+    }
+
+    private function departmentIdFromRow(mixed $raw): int
+    {
+        if (is_array($raw)) {
+            foreach ($raw as $item) {
+                $id = $this->departmentIdFromRow($item);
+                if ($id > 0) {
+                    return $id;
+                }
+            }
+
+            return 0;
+        }
+        if (is_int($raw) || (is_string($raw) && preg_match('/^\d+$/', $raw) === 1)) {
+            return (int) $raw;
+        }
+
+        return 0;
     }
 }
