@@ -6,6 +6,7 @@ namespace BitrixMcp\Tool;
 
 use BitrixMcp\Audit\AuditLogger;
 use BitrixMcp\Auth\TokenAuthenticator;
+use Mcp\Exception\ToolCallException;
 use Throwable;
 
 abstract class AbstractToolHandler
@@ -30,7 +31,8 @@ abstract class AbstractToolHandler
             return $result;
         } catch (Throwable $e) {
             $this->audit->log($toolName, $params, false, $e->getMessage());
-            throw $e;
+            // The SDK masks anything but ToolCallException as a generic -32603; expose the message to the client.
+            throw $e instanceof ToolCallException ? $e : new ToolCallException($e->getMessage(), 0, $e);
         }
     }
 
