@@ -88,11 +88,25 @@ final class PropertyNormalizer
             return false;
         }
 
+        if ($userType === 'HTML' && is_string($value)) {
+            return $this->htmlValue($value);
+        }
+
         if (is_array($value) && $this->isListArray($value) && ($type === 'S' || $userType === 'HTML')) {
             return json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         }
 
         return $this->classicScalar($type, $value);
+    }
+
+    /**
+     * HTML user type expects array(TEXT, TYPE); a plain string would fail required-property checks.
+     *
+     * @return array{VALUE: array{TEXT: string, TYPE: string}}
+     */
+    private function htmlValue(string $text): array
+    {
+        return ['VALUE' => ['TEXT' => $text, 'TYPE' => 'HTML']];
     }
 
     private function polygonToJsonString(mixed $raw): ?string
