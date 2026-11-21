@@ -21,7 +21,7 @@ final class UserTools extends AbstractToolHandler
 
     #[McpTool(
         name: 'user_list',
-        description: 'List users. filter_json is a flat object: ID, LOGIN, EMAIL, NAME, LAST_NAME, SECOND_NAME, ACTIVE, PERSONAL_PHONE, WORK_PHONE, PERSONAL_MOBILE, XML_ID. Password and checkword are never returned.',
+        description: 'List users. filter_json is a flat object: ID, LOGIN, EMAIL, NAME, LAST_NAME, SECOND_NAME, ACTIVE, PERSONAL_PHONE, WORK_PHONE, PERSONAL_MOBILE, XML_ID. Returns WORK_DEPARTMENT and UF_DEPARTMENT when present. Password and checkword are never returned.',
     )]
     public function userList(
         ?string $filter_json = null,
@@ -37,7 +37,7 @@ final class UserTools extends AbstractToolHandler
         ]);
     }
 
-    #[McpTool(name: 'user_get', description: 'Get one user and GROUP_ID. Does not return password or checkword.')]
+    #[McpTool(name: 'user_get', description: 'Get one user, GROUP_ID, WORK_DEPARTMENT, and UF_DEPARTMENT when the field exists. Does not return password or checkword.')]
     public function userGet(int $user_id): array
     {
         return $this->run('user_get', [
@@ -47,7 +47,7 @@ final class UserTools extends AbstractToolHandler
 
     #[McpTool(
         name: 'user_add',
-        description: 'Create a user. fields_json requires LOGIN, EMAIL, PASSWORD. Optional: NAME, LAST_NAME, SECOND_NAME, ACTIVE (Y/N), PERSONAL_PHONE, WORK_PHONE, PERSONAL_MOBILE, XML_ID, CONFIRM_PASSWORD, GROUP_ID (array of ids; replaces groups).',
+        description: 'Create a user. fields_json requires LOGIN, EMAIL, PASSWORD. Optional: NAME, LAST_NAME, SECOND_NAME, ACTIVE (Y/N), PERSONAL_PHONE, WORK_PHONE, PERSONAL_MOBILE, XML_ID, CONFIRM_PASSWORD, GROUP_ID (array of ids; replaces groups), UF_DEPARTMENT (iblock element id, 0 clears).',
     )]
     public function userAdd(string $fields_json): array
     {
@@ -60,7 +60,7 @@ final class UserTools extends AbstractToolHandler
 
     #[McpTool(
         name: 'user_update',
-        description: 'Patch a user. Same fields as user_add. GROUP_ID replaces the user groups; omit it to keep them. Cannot change service_user_id.',
+        description: 'Patch a user. Same fields as user_add. GROUP_ID replaces the user groups; omit it to keep them. UF_DEPARTMENT is an iblock element id (0 clears). Cannot change service_user_id.',
     )]
     public function userUpdate(int $user_id, string $fields_json): array
     {
