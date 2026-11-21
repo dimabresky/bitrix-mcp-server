@@ -322,6 +322,12 @@ final class IblockService
             }
             $classicFields['IBLOCK_ID'] = $iblockId;
 
+            // Add() validates required properties, so pass them in PROPERTY_VALUES (files are set after).
+            $values = $this->propertyValues($iblockId, $properties, $files);
+            if ($values['plain'] !== []) {
+                $classicFields['PROPERTY_VALUES'] = $values['plain'];
+            }
+
             $iblockElement = new CIBlockElement();
             $elementId = $iblockElement->Add($classicFields);
             if (!$elementId) {
@@ -330,8 +336,8 @@ final class IblockService
             }
 
             $elementId = (int) $elementId;
-            if ($properties !== []) {
-                $this->setElementProperties($iblockId, $elementId, $properties, $files);
+            if ($values['files'] !== []) {
+                CIBlockElement::SetPropertyValuesEx($elementId, $iblockId, $values['files']);
             }
 
             return $this->getElement($iblockId, $elementId, self::PROPERTIES_MODE_ALL);
@@ -608,13 +614,31 @@ final class IblockService
         array $properties,
         BitrixFileArray $files,
     ): void {
-        $definitions = $this->loadAllPropertyDefinitions($iblockId);
+        $values = $this->propertyValues($iblockId, $properties, $files);
+        $all = $values['plain'] + $values['files'];
+        if ($all === []) {
+            return;
+        }
+
+        CIBlockElement::SetPropertyValuesEx($elementId, $iblockId, $all);
+    }
+
+    /**
+     * @param array<string, mixed> $properties
+     * @return array{plain: array<string, mixed>, files: array<string, mixed>}
+     */
+    private function propertyValues(int $iblockId, array $properties, BitrixFileArray $files): array
+    {
+        $out = ['plain' => [], 'files' => []];
+        if ($properties === []) {
+            return $out;
+        }
+
         $byCode = [];
-        foreach ($definitions as $def) {
+        foreach ($this->loadAllPropertyDefinitions($iblockId) as $def) {
             $byCode[strtoupper((string) $def['CODE'])] = $def;
         }
 
-        $values = [];
         foreach ($properties as $code => $value) {
             if ($value === null) {
                 continue;
@@ -622,17 +646,13 @@ final class IblockService
             $code = strtoupper((string) $code);
             $schema = $byCode[$code] ?? ['PROPERTY_TYPE' => 'S', 'MULTIPLE' => 'N', 'USER_TYPE' => ''];
             if ((string) ($schema['PROPERTY_TYPE'] ?? '') === 'F') {
-                $values[$code] = $files->makeProperty($value, ($schema['MULTIPLE'] ?? 'N') === 'Y', 'iblock');
+                $out['files'][$code] = $files->makeProperty($value, ($schema['MULTIPLE'] ?? 'N') === 'Y', 'iblock');
                 continue;
             }
-            $values[$code] = $this->propertyNormalizer->prepareForClassicWrite($schema, $value);
+            $out['plain'][$code] = $this->propertyNormalizer->prepareForClassicWrite($schema, $value);
         }
 
-        if ($values === []) {
-            return;
-        }
-
-        CIBlockElement::SetPropertyValuesEx($elementId, $iblockId, $values);
+        return $out;
     }
 
     private function assertElementInIblock(int $iblockId, int $elementId): void
